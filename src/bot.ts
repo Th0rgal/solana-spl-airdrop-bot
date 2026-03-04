@@ -12,6 +12,7 @@ import { computeNextDelayMs, loadState, saveState } from "./state";
 import { runDistributionRound } from "./round";
 import { resolveTokenProgram } from "./tokenProgram";
 import { sleep } from "./utils";
+import { fetchMintTransactionsViaRpc, fetchTokenHoldersViaRpc } from "./rpcData";
 
 async function readBotTokenBalanceRaw(connection: Connection, tokenProgramId: PublicKey): Promise<bigint> {
   const ata = getAssociatedTokenAddressSync(config.tokenMint, config.botKeypair.publicKey, false, tokenProgramId);
@@ -43,14 +44,23 @@ async function runDistributionRoundLive(
     deps: {
       nowIso: () => timestamp,
       readBotTokenBalanceRaw: async () => readBotTokenBalanceRaw(connection, tokenProgramId),
-      fetchTokenHolders: async () =>
-        fetchTokenHolders(config.tokenMint, config.botKeypair.publicKey, decimals),
+      fetchTokenHolders: async () => {
+        try {
+          return await fetchTokenHolders(config.tokenMint, config.botKeypair.publicKey, decimals);
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(`Helius holders API failed, falling back to RPC holder scan: ${message}`);
+          return fetchTokenHoldersViaRpc(connection, config.tokenMint, config.botKeypair.publicKey, tokenProgramId);
+        }
+      },
       excludeRecentSellers: async (holders) =>
         excludeRecentSellers(
           holders,
           config.tokenMint,
           config.sellerLookbackSeconds,
-          config.sellerMintTxScanMaxPages
+          config.sellerMintTxScanMaxPages,
+          Math.floor(Date.now() / 1000),
+          async (_mint, before) => fetchMintTransactionsViaRpc(connection, config.tokenMint, before)
         ),
       calculateDistributionPool,
       calculateAllocations,

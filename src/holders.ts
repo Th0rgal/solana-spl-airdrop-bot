@@ -1,5 +1,4 @@
 import { PublicKey } from "@solana/web3.js";
-import { heliusGet } from "./helius";
 import { Holder } from "./types";
 
 interface RawHolder {
@@ -20,6 +19,12 @@ interface RawHoldersResponseObject {
 }
 
 type RawHoldersResponse = RawHolder[] | RawHoldersResponseObject;
+type HoldersFetcher = (
+  tokenMint: PublicKey,
+  page: number,
+  limit: number,
+  paginationToken?: string
+) => Promise<RawHoldersResponse>;
 
 function decimalToRaw(value: string, decimals: number): bigint {
   const [whole, fraction = ""] = value.split(".");
@@ -37,18 +42,28 @@ function parseRawBalance(raw: RawHolder, decimals: number): bigint {
       continue;
     }
 
-    if (typeof candidate === "number") {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
       if (Number.isInteger(candidate)) {
-        return BigInt(candidate);
+        return BigInt(Math.trunc(candidate));
       }
       return decimalToRaw(String(candidate), decimals);
     }
 
     if (typeof candidate === "string") {
-      if (candidate.includes(".")) {
-        return decimalToRaw(candidate, decimals);
+      const normalized = candidate.trim();
+      if (normalized.length === 0) {
+        continue;
       }
-      return BigInt(candidate);
+
+      if (normalized.includes(".")) {
+        return decimalToRaw(normalized, decimals);
+      }
+
+      try {
+        return BigInt(normalized);
+      } catch {
+        continue;
+      }
     }
   }
 
@@ -62,20 +77,27 @@ function getWalletAddress(raw: RawHolder): string | null {
 export async function fetchTokenHolders(
   tokenMint: PublicKey,
   botWallet: PublicKey,
-  decimals: number
+  decimals: number,
+  fetchPage?: HoldersFetcher
 ): Promise<Holder[]> {
   const holders: Holder[] = [];
   let page = 1;
   const limit = 1000;
   let paginationToken: string | undefined;
+  const resolvedFetchPage: HoldersFetcher =
+    fetchPage ??
+    (async (mint, currentPage, currentLimit, currentPaginationToken) => {
+      const { heliusGet } = await import("./helius");
+      return heliusGet<RawHoldersResponse>("/token-holders", {
+        mint: mint.toBase58(),
+        page: currentPage,
+        limit: currentLimit,
+        paginationToken: currentPaginationToken
+      });
+    });
 
   while (true) {
-    const result = await heliusGet<RawHoldersResponse>("/token-holders", {
-      mint: tokenMint.toBase58(),
-      page,
-      limit,
-      paginationToken
-    });
+    const result = await resolvedFetchPage(tokenMint, page, limit, paginationToken);
 
     const entries: RawHolder[] = Array.isArray(result)
       ? result

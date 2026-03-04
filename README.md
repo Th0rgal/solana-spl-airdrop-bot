@@ -135,6 +135,8 @@ Each round log (`logs/<timestamp>.json`) includes:
 - `SELLER_INDEX_MAX_STALENESS_SECONDS` defines max tolerated age of seller index before rounds are skipped.
 - `STATE_FILE_PATH` overrides persisted scheduler state file (default: `state/bot-state.json`).
 - `SELLER_INDEX_STATE_FILE_PATH` overrides seller index state file (default: `state/seller-index.json`).
+- `RATE_LIMIT_PER_SECOND` controls transfer pacing (default: `5`).
+- `SKIP_PREFLIGHT` disables preflight simulation for providers that reject simulation requests.
 - `DRY_RUN` toggles simulation mode (no on-chain transfers).
 - `RUN_ONCE` executes one distribution round and exits.
 - `DOTENV_PRIVATE_KEY` is required at runtime to decrypt encrypted `.env`.
@@ -146,6 +148,7 @@ Each round log (`logs/<timestamp>.json`) includes:
 - Each round syncs only new mint transactions since the last cursor, reducing API load.
 - If seller-index sync is stale/unavailable beyond threshold, the round is skipped (fail-closed).
 - Transfer rate limiting defaults to ~5 tx/sec.
+- If using Helius Gatekeeper RPC (`https://beta.helius-rpc.com/...`), set `SKIP_PREFLIGHT=true`.
 
 ## Quick Proof
 

@@ -85,7 +85,8 @@ async function runDistributionRoundLive(
           allocations,
           config.rateLimitPerSecond,
           config.maxTransferRetries,
-          config.dryRun
+          config.dryRun,
+          config.skipPreflight
         ),
       writeRoundLog
     }

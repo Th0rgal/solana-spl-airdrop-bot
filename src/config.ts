@@ -67,6 +67,7 @@ export const config = {
   loopIntervalMs: parsePositiveInt(process.env.LOOP_INTERVAL_MS, 60 * 60 * 1000, "LOOP_INTERVAL_MS"),
   rateLimitPerSecond: parsePositiveInt(process.env.RATE_LIMIT_PER_SECOND, 5, "RATE_LIMIT_PER_SECOND"),
   maxTransferRetries: parsePositiveInt(process.env.MAX_TRANSFER_RETRIES, 3, "MAX_TRANSFER_RETRIES"),
+  skipPreflight: parseBoolean(process.env.SKIP_PREFLIGHT, false),
   minDistributionRaw: BigInt(process.env.MIN_DISTRIBUTION_RAW ?? "1"),
   minAllocationRaw: BigInt(process.env.MIN_ALLOCATION_RAW ?? "1"),
   sellerLookbackSeconds: parsePositiveInt(process.env.SELLER_LOOKBACK_SECONDS, 3600, "SELLER_LOOKBACK_SECONDS"),

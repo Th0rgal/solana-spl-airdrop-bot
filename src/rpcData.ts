@@ -153,14 +153,37 @@ export async function fetchMintTransactionsViaRpc(
     return [];
   }
 
-  const parsedTxs = await callWithRetry(
-    () =>
-      connection.getParsedTransactions(
-        signatures.map((entry) => entry.signature),
-        { commitment: "confirmed", maxSupportedTransactionVersion: 0 }
-      ),
-    "getParsedTransactions"
-  );
+  let parsedTxs: Array<Awaited<ReturnType<Connection["getParsedTransaction"]>>>;
+  try {
+    parsedTxs = await callWithRetry(
+      () =>
+        connection.getParsedTransactions(
+          signatures.map((entry) => entry.signature),
+          { commitment: "confirmed", maxSupportedTransactionVersion: 0 }
+        ),
+      "getParsedTransactions"
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    const canFallback =
+      message.includes("unsafeRes.map is not a function") || message.includes("getParsedTransactions");
+    if (!canFallback) {
+      throw error;
+    }
+
+    parsedTxs = [];
+    for (const signatureInfo of signatures) {
+      const parsedTx = await callWithRetry(
+        () =>
+          connection.getParsedTransaction(signatureInfo.signature, {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0
+          }),
+        "getParsedTransaction"
+      );
+      parsedTxs.push(parsedTx);
+    }
+  }
 
   const mint = tokenMint.toBase58();
   const result: MintTxLike[] = [];

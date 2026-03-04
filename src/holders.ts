@@ -108,7 +108,7 @@ export async function fetchTokenHolders(
   decimals: number,
   fetchPage?: HoldersFetcher
 ): Promise<Holder[]> {
-  const holders: Holder[] = [];
+  const holdersByWallet = new Map<string, bigint>();
   let page = 1;
   const limit = 1000;
   let paginationToken: string | undefined;
@@ -150,7 +150,8 @@ export async function fetchTokenHolders(
         continue;
       }
 
-      holders.push({ walletAddress, balanceRaw });
+      const previous = holdersByWallet.get(walletAddress) ?? 0n;
+      holdersByWallet.set(walletAddress, previous + balanceRaw);
     }
 
     if (!Array.isArray(result)) {
@@ -166,5 +167,8 @@ export async function fetchTokenHolders(
     }
   }
 
-  return holders;
+  return Array.from(holdersByWallet.entries()).map(([walletAddress, balanceRaw]) => ({
+    walletAddress,
+    balanceRaw
+  }));
 }

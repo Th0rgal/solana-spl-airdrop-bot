@@ -19,7 +19,8 @@ async function transferWithRetry(
   sourceTokenAccount: PublicKey,
   destinationOwner: PublicKey,
   amountRaw: bigint,
-  maxRetries: number
+  maxRetries: number,
+  skipPreflight: boolean
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
     try {
@@ -30,7 +31,7 @@ async function transferWithRetry(
         destinationOwner,
         false,
         "confirmed",
-        undefined,
+        { skipPreflight },
         tokenProgramId
       );
 
@@ -42,7 +43,7 @@ async function transferWithRetry(
         payer.publicKey,
         amountRaw,
         [],
-        undefined,
+        { skipPreflight },
         tokenProgramId
       );
 
@@ -67,7 +68,8 @@ export async function executeTransfers(
   allocations: Allocation[],
   rateLimitPerSecond: number,
   maxRetries: number,
-  dryRun = false
+  dryRun = false,
+  skipPreflight = false
 ): Promise<{ txHashes: string[]; failedTransfers: Array<{ wallet: string; amount: string; error: string }> }> {
   const txHashes: string[] = [];
   const failedTransfers: Array<{ wallet: string; amount: string; error: string }> = [];
@@ -94,7 +96,8 @@ export async function executeTransfers(
         sourceTokenAccount,
         recipient,
         allocation.amountRaw,
-        maxRetries
+        maxRetries,
+        skipPreflight
       );
 
       txHashes.push(signature);

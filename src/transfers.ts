@@ -103,7 +103,8 @@ export async function executeTransfers(
       txHashes.push(signature);
       console.log(`Transfer success: ${allocation.walletAddress} -> ${allocation.amountRaw.toString()} (${signature})`);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const rawMessage = error instanceof Error ? error.message : String(error);
+      const message = rawMessage && rawMessage.trim().length > 0 ? rawMessage : "Unknown transfer error";
       failedTransfers.push({
         wallet: allocation.walletAddress,
         amount: allocation.amountRaw.toString(),

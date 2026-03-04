@@ -21,7 +21,7 @@ Every round (default: hourly), the bot:
 - Very small rounds are skipped (`MIN_DISTRIBUTION_RAW`).
 - Dust transfers are skipped (`MIN_ALLOCATION_RAW`).
 - Round failures are caught so the bot continues next cycle.
-- Last successful round time is persisted to disk, so restart does not trigger duplicate hourly rounds.
+- Last attempted and successful round timestamps are persisted to disk, so restart does not trigger duplicate hourly rounds after partial/failed rounds.
 - `.env` is ignored by git.
 
 ## Project Structure

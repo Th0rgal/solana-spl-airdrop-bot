@@ -2,19 +2,26 @@ import { promises as fs } from "fs";
 import path from "path";
 
 export interface BotState {
+  lastRoundAttemptedAtMs?: number;
   lastRoundCompletedAtMs?: number;
 }
 
 export function computeNextDelayMs(
+  lastRoundAttemptedAtMs: number | undefined,
   lastRoundCompletedAtMs: number | undefined,
   intervalMs: number,
   nowMs: number
 ): number {
-  if (!lastRoundCompletedAtMs || intervalMs <= 0) {
+  if (intervalMs <= 0) {
     return 0;
   }
 
-  const nextAllowed = lastRoundCompletedAtMs + intervalMs;
+  const anchor = Math.max(lastRoundAttemptedAtMs ?? 0, lastRoundCompletedAtMs ?? 0);
+  if (anchor <= 0) {
+    return 0;
+  }
+
+  const nextAllowed = anchor + intervalMs;
   return Math.max(nextAllowed - nowMs, 0);
 }
 
@@ -23,10 +30,14 @@ export async function loadState(stateFilePath: string): Promise<BotState> {
     const raw = await fs.readFile(stateFilePath, "utf8");
     const parsed = JSON.parse(raw) as BotState;
 
-    if (
-      parsed.lastRoundCompletedAtMs !== undefined &&
-      (!Number.isFinite(parsed.lastRoundCompletedAtMs) || parsed.lastRoundCompletedAtMs <= 0)
-    ) {
+    const attemptedValid =
+      parsed.lastRoundAttemptedAtMs === undefined ||
+      (Number.isFinite(parsed.lastRoundAttemptedAtMs) && parsed.lastRoundAttemptedAtMs > 0);
+    const completedValid =
+      parsed.lastRoundCompletedAtMs === undefined ||
+      (Number.isFinite(parsed.lastRoundCompletedAtMs) && parsed.lastRoundCompletedAtMs > 0);
+
+    if (!attemptedValid || !completedValid) {
       return {};
     }
 

@@ -129,11 +129,20 @@ async function main(): Promise<void> {
   while (true) {
     if (!config.runOnce) {
       const state = await loadState(config.stateFilePath);
-      const delayMs = computeNextDelayMs(state.lastRoundCompletedAtMs, config.loopIntervalMs, Date.now());
+      const delayMs = computeNextDelayMs(
+        state.lastRoundAttemptedAtMs,
+        state.lastRoundCompletedAtMs,
+        config.loopIntervalMs,
+        Date.now()
+      );
       if (delayMs > 0) {
         console.log(`Sleeping for ${delayMs} ms before next eligible round`);
         await sleep(delayMs);
       }
+    }
+
+    if (!config.runOnce) {
+      await saveState(config.stateFilePath, { lastRoundAttemptedAtMs: Date.now() });
     }
 
     let roundSucceeded = false;
@@ -145,8 +154,12 @@ async function main(): Promise<void> {
       console.error(`Distribution round failed: ${message}`);
     }
 
-    if (roundSucceeded) {
-      await saveState(config.stateFilePath, { lastRoundCompletedAtMs: Date.now() });
+    if (roundSucceeded && !config.runOnce) {
+      const state = await loadState(config.stateFilePath);
+      await saveState(config.stateFilePath, {
+        ...state,
+        lastRoundCompletedAtMs: Date.now()
+      });
     }
 
     if (config.runOnce) {

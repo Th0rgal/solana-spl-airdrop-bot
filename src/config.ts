@@ -32,6 +32,21 @@ function parseBoolean(rawValue: string | undefined, fallback = false): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
+function parseBigIntValue(rawValue: string | undefined, fallback: bigint, name: string): bigint {
+  if (rawValue === undefined) {
+    return fallback;
+  }
+  const normalized = rawValue.trim();
+  if (normalized.length === 0) {
+    return fallback;
+  }
+  try {
+    return BigInt(normalized);
+  } catch {
+    throw new Error(`${name} must be an integer value`);
+  }
+}
+
 function parsePrivateKey(secret: string): Uint8Array {
   const trimmed = secret.trim();
 
@@ -68,8 +83,8 @@ export const config = {
   rateLimitPerSecond: parsePositiveInt(process.env.RATE_LIMIT_PER_SECOND, 5, "RATE_LIMIT_PER_SECOND"),
   maxTransferRetries: parsePositiveInt(process.env.MAX_TRANSFER_RETRIES, 3, "MAX_TRANSFER_RETRIES"),
   skipPreflight: parseBoolean(process.env.SKIP_PREFLIGHT, false),
-  minDistributionRaw: BigInt(process.env.MIN_DISTRIBUTION_RAW ?? "1"),
-  minAllocationRaw: BigInt(process.env.MIN_ALLOCATION_RAW ?? "1"),
+  minDistributionRaw: parseBigIntValue(process.env.MIN_DISTRIBUTION_RAW, 1n, "MIN_DISTRIBUTION_RAW"),
+  minAllocationRaw: parseBigIntValue(process.env.MIN_ALLOCATION_RAW, 1n, "MIN_ALLOCATION_RAW"),
   sellerLookbackSeconds: parsePositiveInt(process.env.SELLER_LOOKBACK_SECONDS, 3600, "SELLER_LOOKBACK_SECONDS"),
   sellerMintTxScanMaxPages: parsePositiveInt(
     process.env.SELLER_MINT_TX_SCAN_MAX_PAGES ?? process.env.SELLER_TX_SCAN_MAX_PAGES,

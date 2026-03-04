@@ -28,11 +28,15 @@ type HoldersFetcher = (
 ) => Promise<RawHoldersResponse>;
 
 function decimalToRaw(value: string, decimals: number): bigint {
-  const [whole, fraction = ""] = value.split(".");
+  const trimmed = value.trim();
+  const isNegative = trimmed.startsWith("-");
+  const unsigned = trimmed.replace(/^[+-]/, "");
+  const [whole, fraction = ""] = unsigned.split(".");
   const normalizedFraction = (fraction + "0".repeat(decimals)).slice(0, decimals);
   const wholePart = BigInt(whole || "0") * 10n ** BigInt(decimals);
   const fractionPart = BigInt(normalizedFraction || "0");
-  return wholePart + fractionPart;
+  const absolute = wholePart + fractionPart;
+  return isNegative ? -absolute : absolute;
 }
 
 function parseRawDecimal(value: string, decimals: number): bigint | null {
@@ -77,15 +81,12 @@ function parseRawBalance(raw: RawHolder, decimals: number): bigint {
     }
 
     if (typeof value === "number" && Number.isFinite(value)) {
-      const decimalParsed = parseRawDecimal(String(value), decimals);
       if (candidate.isUiAmount) {
+        const decimalParsed = parseRawDecimal(String(value), decimals);
         if (decimalParsed !== null) {
           return decimalParsed;
         }
         continue;
-      }
-      if (Number.isInteger(value)) {
-        return BigInt(Math.trunc(value));
       }
       return BigInt(Math.trunc(value));
     }

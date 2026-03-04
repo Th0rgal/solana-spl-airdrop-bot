@@ -60,7 +60,8 @@ export async function executeTransfers(
   mint: PublicKey,
   allocations: Allocation[],
   rateLimitPerSecond: number,
-  maxRetries: number
+  maxRetries: number,
+  dryRun = false
 ): Promise<{ txHashes: string[]; failedTransfers: Array<{ wallet: string; amount: string; error: string }> }> {
   const txHashes: string[] = [];
   const failedTransfers: Array<{ wallet: string; amount: string; error: string }> = [];
@@ -71,6 +72,14 @@ export async function executeTransfers(
   for (const allocation of allocations) {
     try {
       const recipient = new PublicKey(allocation.walletAddress);
+      if (dryRun) {
+        const simulatedId = `dry-run:${recipient.toBase58()}:${allocation.amountRaw.toString()}`;
+        txHashes.push(simulatedId);
+        console.log(`Dry-run transfer: ${allocation.walletAddress} -> ${allocation.amountRaw.toString()}`);
+        await sleep(spacingMs);
+        continue;
+      }
+
       const signature = await transferWithRetry(
         connection,
         payer,

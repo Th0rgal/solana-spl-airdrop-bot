@@ -10,6 +10,7 @@ interface TokenTransfer {
 }
 
 interface TxRecord {
+  signature?: string;
   timestamp?: number;
   tokenTransfers?: TokenTransfer[];
 }
@@ -40,26 +41,44 @@ function transferIsSell(transfer: TokenTransfer, wallet: string, tokenMint: stri
 async function hasSoldInWindow(
   wallet: string,
   tokenMint: string,
-  minTimestamp: number
+  minTimestamp: number,
+  maxPages: number
 ): Promise<boolean> {
-  const transactions = await heliusGet<TxRecord[]>(`/addresses/${wallet}/transactions`, {
-    limit: 100
-  });
+  let before: string | undefined;
 
-  if (!Array.isArray(transactions)) {
-    return false;
-  }
+  for (let page = 0; page < maxPages; page += 1) {
+    const transactions = await heliusGet<TxRecord[]>(`/addresses/${wallet}/transactions`, {
+      limit: 100,
+      before
+    });
 
-  for (const tx of transactions) {
-    const txTimestamp = tx.timestamp ?? 0;
-    if (txTimestamp < minTimestamp) {
-      continue;
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      return false;
     }
 
-    const transfers = tx.tokenTransfers ?? [];
-    if (transfers.some((transfer) => transferIsSell(transfer, wallet, tokenMint))) {
-      return true;
+    let foundTxInWindow = false;
+    for (const tx of transactions) {
+      const txTimestamp = tx.timestamp ?? 0;
+      if (txTimestamp < minTimestamp) {
+        continue;
+      }
+
+      foundTxInWindow = true;
+      const transfers = tx.tokenTransfers ?? [];
+      if (transfers.some((transfer) => transferIsSell(transfer, wallet, tokenMint))) {
+        return true;
+      }
     }
+
+    if (!foundTxInWindow) {
+      return false;
+    }
+
+    const lastSignature = transactions[transactions.length - 1]?.signature;
+    if (!lastSignature) {
+      return false;
+    }
+    before = lastSignature;
   }
 
   return false;
@@ -89,6 +108,7 @@ export async function excludeRecentSellers(
   holders: Holder[],
   tokenMint: PublicKey,
   lookbackSeconds: number,
+  maxPages: number,
   nowUnixSeconds = Math.floor(Date.now() / 1000)
 ): Promise<{ eligibleHolders: Holder[]; excludedSellersCount: number }> {
   const minTimestamp = nowUnixSeconds - lookbackSeconds;
@@ -96,7 +116,7 @@ export async function excludeRecentSellers(
 
   const soldFlags = await runConcurrently(holders, 8, async (holder) => {
     try {
-      return await hasSoldInWindow(holder.walletAddress, mint, minTimestamp);
+      return await hasSoldInWindow(holder.walletAddress, mint, minTimestamp, maxPages);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Failed to inspect seller activity for ${holder.walletAddress}: ${message}`);

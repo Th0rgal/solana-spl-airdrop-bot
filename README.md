@@ -92,6 +92,8 @@ npm run build
 npm start
 ```
 
+For the first validation round, keep `DRY_RUN=true`. After logs look correct, set `DRY_RUN=false`.
+
 ## Log Format
 
 Each round log (`logs/<timestamp>.json`) includes:
@@ -102,11 +104,19 @@ Each round log (`logs/<timestamp>.json`) includes:
 - `eligible_holders_count`
 - `excluded_sellers_count`
 - `tx_hashes`
+- optional `total_allocated`
+- optional `attempted_transfers`
 - optional `skipped_reason`
 - optional `failed_transfers`
+
+## Config Knobs
+
+- `SELLER_TX_SCAN_MAX_PAGES` sets max transaction pages scanned per wallet during seller detection.
+- `DRY_RUN` toggles simulation mode (no on-chain transfers).
 
 ## Operational Notes
 
 - Wallet token funding is manual; this bot only redistributes.
 - Seller detection uses recent Helius transactions and checks token outflows in the configured lookback window.
+- Seller checks are paginated through Helius history for better coverage in active wallets.
 - Transfer rate limiting defaults to ~5 tx/sec.

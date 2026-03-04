@@ -56,7 +56,8 @@ async function runDistributionRound(connection: Connection, decimals: number): P
   const { eligibleHolders, excludedSellersCount } = await excludeRecentSellers(
     holders,
     config.tokenMint,
-    config.sellerLookbackSeconds
+    config.sellerLookbackSeconds,
+    config.sellerTxScanMaxPages
   );
 
   const allocations = calculateAllocations(
@@ -91,15 +92,18 @@ async function runDistributionRound(connection: Connection, decimals: number): P
     config.tokenMint,
     allocations,
     config.rateLimitPerSecond,
-    config.maxTransferRetries
+    config.maxTransferRetries,
+    config.dryRun
   );
 
   const roundLog: RoundLog = {
     timestamp,
     bot_balance: botBalanceRaw.toString(),
     distribution_pool: distributionPoolRaw.toString(),
+    total_allocated: totalAllocated.toString(),
     eligible_holders_count: eligibleHolders.length,
     excluded_sellers_count: excludedSellersCount,
+    attempted_transfers: allocations.length,
     tx_hashes: txHashes,
     failed_transfers: failedTransfers
   };
@@ -118,6 +122,7 @@ async function main(): Promise<void> {
   console.log(`Bot wallet: ${config.botKeypair.publicKey.toBase58()}`);
   console.log(`Token mint: ${config.tokenMint.toBase58()}`);
   console.log(`Token decimals: ${decimals}`);
+  console.log(`Dry run mode: ${config.dryRun}`);
 
   while (true) {
     try {

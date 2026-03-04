@@ -12,6 +12,15 @@ interface RawHolder {
   uiAmount?: string | number;
 }
 
+interface RawHoldersResponseObject {
+  token_accounts?: RawHolder[];
+  holders?: RawHolder[];
+  result?: RawHolder[];
+  paginationToken?: string;
+}
+
+type RawHoldersResponse = RawHolder[] | RawHoldersResponseObject;
+
 function decimalToRaw(value: string, decimals: number): bigint {
   const [whole, fraction = ""] = value.split(".");
   const normalizedFraction = (fraction + "0".repeat(decimals)).slice(0, decimals);
@@ -58,19 +67,25 @@ export async function fetchTokenHolders(
   const holders: Holder[] = [];
   let page = 1;
   const limit = 1000;
+  let paginationToken: string | undefined;
 
   while (true) {
-    const result = await heliusGet<RawHolder[]>("/token-holders", {
+    const result = await heliusGet<RawHoldersResponse>("/token-holders", {
       mint: tokenMint.toBase58(),
       page,
-      limit
+      limit,
+      paginationToken
     });
 
-    if (!Array.isArray(result) || result.length === 0) {
+    const entries: RawHolder[] = Array.isArray(result)
+      ? result
+      : result.token_accounts ?? result.holders ?? result.result ?? [];
+
+    if (entries.length === 0) {
       break;
     }
 
-    for (const entry of result) {
+    for (const entry of entries) {
       const walletAddress = getWalletAddress(entry);
       if (!walletAddress) {
         continue;
@@ -88,11 +103,17 @@ export async function fetchTokenHolders(
       holders.push({ walletAddress, balanceRaw });
     }
 
-    if (result.length < limit) {
-      break;
+    if (!Array.isArray(result)) {
+      paginationToken = result.paginationToken;
+      if (!paginationToken) {
+        break;
+      }
+    } else {
+      if (entries.length < limit) {
+        break;
+      }
+      page += 1;
     }
-
-    page += 1;
   }
 
   return holders;

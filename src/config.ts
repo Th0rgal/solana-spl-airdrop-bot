@@ -12,6 +12,25 @@ for (const key of REQUIRED_ENV) {
   }
 }
 
+function parsePositiveInt(rawValue: string | undefined, fallback: number, name: string): number {
+  if (rawValue === undefined || rawValue === "") {
+    return fallback;
+  }
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number`);
+  }
+  return Math.floor(value);
+}
+
+function parseBoolean(rawValue: string | undefined, fallback = false): boolean {
+  if (rawValue === undefined || rawValue === "") {
+    return fallback;
+  }
+  const normalized = rawValue.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
 function parsePrivateKey(secret: string): Uint8Array {
   const trimmed = secret.trim();
 
@@ -44,12 +63,14 @@ export const config = {
   heliusApiKey: process.env.HELIUS_API_KEY as string,
   tokenMint: new PublicKey(process.env.TOKEN_MINT as string),
   botKeypair: keypair,
-  loopIntervalMs: Number(process.env.LOOP_INTERVAL_MS ?? 60 * 60 * 1000),
-  rateLimitPerSecond: Number(process.env.RATE_LIMIT_PER_SECOND ?? 5),
-  maxTransferRetries: Number(process.env.MAX_TRANSFER_RETRIES ?? 3),
+  loopIntervalMs: parsePositiveInt(process.env.LOOP_INTERVAL_MS, 60 * 60 * 1000, "LOOP_INTERVAL_MS"),
+  rateLimitPerSecond: parsePositiveInt(process.env.RATE_LIMIT_PER_SECOND, 5, "RATE_LIMIT_PER_SECOND"),
+  maxTransferRetries: parsePositiveInt(process.env.MAX_TRANSFER_RETRIES, 3, "MAX_TRANSFER_RETRIES"),
   minDistributionRaw: BigInt(process.env.MIN_DISTRIBUTION_RAW ?? "1"),
   minAllocationRaw: BigInt(process.env.MIN_ALLOCATION_RAW ?? "1"),
-  sellerLookbackSeconds: Number(process.env.SELLER_LOOKBACK_SECONDS ?? 3600)
+  sellerLookbackSeconds: parsePositiveInt(process.env.SELLER_LOOKBACK_SECONDS, 3600, "SELLER_LOOKBACK_SECONDS"),
+  sellerTxScanMaxPages: parsePositiveInt(process.env.SELLER_TX_SCAN_MAX_PAGES, 20, "SELLER_TX_SCAN_MAX_PAGES"),
+  dryRun: parseBoolean(process.env.DRY_RUN, false)
 };
 
 export type BotConfig = typeof config;

@@ -9,6 +9,7 @@ import { calculateAllocations, calculateDistributionPool } from "./distribution"
 import { executeTransfers } from "./transfers";
 import { RoundLog } from "./types";
 import { computeNextDelayMs, loadState, saveState } from "./state";
+import { runDistributionRound } from "./round";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,87 +33,46 @@ async function writeRoundLog(roundLog: RoundLog): Promise<void> {
   await fs.writeFile(logPath, `${JSON.stringify(roundLog, null, 2)}\n`, "utf8");
 }
 
-async function runDistributionRound(connection: Connection, decimals: number): Promise<void> {
+async function runDistributionRoundLive(connection: Connection, decimals: number): Promise<void> {
   const timestamp = new Date().toISOString();
+  const roundLog: RoundLog = await runDistributionRound({
+    minDistributionRaw: config.minDistributionRaw,
+    minAllocationRaw: config.minAllocationRaw,
+    deps: {
+      nowIso: () => timestamp,
+      readBotTokenBalanceRaw: async () => readBotTokenBalanceRaw(connection),
+      fetchTokenHolders: async () =>
+        fetchTokenHolders(config.tokenMint, config.botKeypair.publicKey, decimals),
+      excludeRecentSellers: async (holders) =>
+        excludeRecentSellers(
+          holders,
+          config.tokenMint,
+          config.sellerLookbackSeconds,
+          config.sellerTxScanMaxPages
+        ),
+      calculateDistributionPool,
+      calculateAllocations,
+      executeTransfers: async (allocations) =>
+        executeTransfers(
+          connection,
+          config.botKeypair,
+          config.tokenMint,
+          allocations,
+          config.rateLimitPerSecond,
+          config.maxTransferRetries,
+          config.dryRun
+        ),
+      writeRoundLog
+    }
+  });
 
-  const botBalanceRaw = await readBotTokenBalanceRaw(connection);
-  const distributionPoolRaw = calculateDistributionPool(botBalanceRaw);
-
-  if (distributionPoolRaw < config.minDistributionRaw) {
-    const roundLog: RoundLog = {
-      timestamp,
-      bot_balance: botBalanceRaw.toString(),
-      distribution_pool: distributionPoolRaw.toString(),
-      eligible_holders_count: 0,
-      excluded_sellers_count: 0,
-      tx_hashes: [],
-      skipped_reason: "distribution pool below minimum threshold"
-    };
-    await writeRoundLog(roundLog);
-    console.log(`[${timestamp}] Round skipped: low distribution pool (${distributionPoolRaw.toString()})`);
+  if (roundLog.skipped_reason) {
+    console.log(`[${timestamp}] Round skipped: ${roundLog.skipped_reason}`);
     return;
   }
 
-  const holders = await fetchTokenHolders(config.tokenMint, config.botKeypair.publicKey, decimals);
-  const { eligibleHolders, excludedSellersCount } = await excludeRecentSellers(
-    holders,
-    config.tokenMint,
-    config.sellerLookbackSeconds,
-    config.sellerTxScanMaxPages
-  );
-
-  const allocations = calculateAllocations(
-    eligibleHolders,
-    distributionPoolRaw,
-    config.minAllocationRaw
-  );
-
-  if (allocations.length === 0) {
-    const roundLog: RoundLog = {
-      timestamp,
-      bot_balance: botBalanceRaw.toString(),
-      distribution_pool: distributionPoolRaw.toString(),
-      eligible_holders_count: eligibleHolders.length,
-      excluded_sellers_count: excludedSellersCount,
-      tx_hashes: [],
-      skipped_reason: "no eligible allocations after filtering"
-    };
-    await writeRoundLog(roundLog);
-    console.log(`[${timestamp}] Round skipped: no allocations`);
-    return;
-  }
-
-  const totalAllocated = allocations.reduce((sum, allocation) => sum + allocation.amountRaw, 0n);
-  if (totalAllocated > distributionPoolRaw) {
-    throw new Error("Safety violation: total allocation exceeds 20% distribution pool");
-  }
-
-  const { txHashes, failedTransfers } = await executeTransfers(
-    connection,
-    config.botKeypair,
-    config.tokenMint,
-    allocations,
-    config.rateLimitPerSecond,
-    config.maxTransferRetries,
-    config.dryRun
-  );
-
-  const roundLog: RoundLog = {
-    timestamp,
-    bot_balance: botBalanceRaw.toString(),
-    distribution_pool: distributionPoolRaw.toString(),
-    total_allocated: totalAllocated.toString(),
-    eligible_holders_count: eligibleHolders.length,
-    excluded_sellers_count: excludedSellersCount,
-    attempted_transfers: allocations.length,
-    tx_hashes: txHashes,
-    failed_transfers: failedTransfers
-  };
-
-  await writeRoundLog(roundLog);
-  console.log(
-    `[${timestamp}] Round complete: ${txHashes.length} successful tx, ${failedTransfers.length} failed`
-  );
+  const failedCount = roundLog.failed_transfers?.length ?? 0;
+  console.log(`[${timestamp}] Round complete: ${roundLog.tx_hashes.length} successful tx, ${failedCount} failed`);
 }
 
 async function main(): Promise<void> {
@@ -147,7 +107,7 @@ async function main(): Promise<void> {
 
     let roundSucceeded = false;
     try {
-      await runDistributionRound(connection, decimals);
+      await runDistributionRoundLive(connection, decimals);
       roundSucceeded = true;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.stack ?? error.message : String(error);

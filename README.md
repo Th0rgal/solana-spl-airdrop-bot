@@ -8,7 +8,7 @@ Every round (default: hourly), the bot:
 
 1. Reads the bot wallet token balance.
 2. Computes a pool equal to 20% of current balance.
-3. Fetches token holders from Helius.
+3. Fetches token holders from Helius (or RPC fallback) and keeps only on-curve wallet owners (human holders).
 4. Excludes holders that sold the token in the last hour.
 5. Calculates proportional allocations across eligible holders.
 6. Sends SPL token transfers with retry + rate limiting.
@@ -20,6 +20,7 @@ Every round (default: hourly), the bot:
 - If computed allocations exceed the pool, the round aborts.
 - Very small rounds are skipped (`MIN_DISTRIBUTION_RAW`).
 - Dust transfers are skipped (`MIN_ALLOCATION_RAW`).
+- Off-curve/program-owned addresses are excluded from holder eligibility and transfer execution.
 - Round failures are caught so the bot continues next cycle.
 - Last attempted and successful round timestamps are persisted to disk, so restart does not trigger duplicate hourly rounds after partial/failed rounds.
 - `.env` is stored encrypted with `dotenvx`; `.env.keys` is ignored by git.

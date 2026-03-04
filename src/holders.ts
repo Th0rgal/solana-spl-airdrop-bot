@@ -1,5 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 import { Holder } from "./types";
+import { isHumanWalletAddress } from "./wallets";
 
 interface RawHolder {
   owner?: string;
@@ -142,6 +143,9 @@ export async function fetchTokenHolders(
       }
 
       if (walletAddress === botWallet.toBase58()) {
+        continue;
+      }
+      if (!isHumanWalletAddress(walletAddress)) {
         continue;
       }
 

@@ -10,6 +10,7 @@ import {
 } from "@solana/spl-token";
 import { Allocation } from "./types";
 import { sleep } from "./utils";
+import { isHumanWalletAddress } from "./wallets";
 
 async function transferWithRetry(
   connection: Connection,
@@ -79,6 +80,17 @@ export async function executeTransfers(
 
   for (const allocation of allocations) {
     try {
+      if (!isHumanWalletAddress(allocation.walletAddress)) {
+        failedTransfers.push({
+          wallet: allocation.walletAddress,
+          amount: allocation.amountRaw.toString(),
+          error: "Recipient is not a human wallet (off-curve or invalid address)"
+        });
+        console.warn(`Skipping non-human recipient: ${allocation.walletAddress}`);
+        await sleep(spacingMs);
+        continue;
+      }
+
       const recipient = new PublicKey(allocation.walletAddress);
       if (dryRun) {
         const simulatedId = `dry-run:${recipient.toBase58()}:${allocation.amountRaw.toString()}`;

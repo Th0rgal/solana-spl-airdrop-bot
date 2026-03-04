@@ -1,6 +1,7 @@
 import { Connection, ParsedAccountData, PublicKey } from "@solana/web3.js";
 import { Holder } from "./types";
 import { sleep } from "./utils";
+import { isHumanWalletAddress } from "./wallets";
 
 interface TokenTransferLike {
   mint?: string;
@@ -52,6 +53,9 @@ export async function fetchTokenHoldersViaRpc(
     const owner = info?.owner;
     const amountRaw = toBigIntAmount(info?.tokenAmount?.amount);
     if (!owner || amountRaw <= 0n) {
+      continue;
+    }
+    if (!isHumanWalletAddress(owner)) {
       continue;
     }
     holderBalances.set(owner, (holderBalances.get(owner) ?? 0n) + amountRaw);

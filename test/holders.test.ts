@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, PublicKey } from "@solana/web3.js";
 import { fetchTokenHolders } from "../src/holders";
 
 function wallet(): string {
@@ -87,4 +87,22 @@ test("fetchTokenHolders ignores scientific-notation numeric balances without cra
   ]);
 
   assert.equal(result.length, 0);
+});
+
+test("fetchTokenHolders excludes off-curve program-owned addresses", async () => {
+  const mint = Keypair.generate().publicKey;
+  const bot = Keypair.generate().publicKey;
+  const human = wallet();
+  const [offCurveOwner] = PublicKey.findProgramAddressSync([Buffer.from("owner")], Keypair.generate().publicKey);
+
+  const result = await fetchTokenHolders(mint, bot, 0, async () => ({
+    token_accounts: [
+      { owner: human, amount: "25" },
+      { owner: offCurveOwner.toBase58(), amount: "50" }
+    ]
+  }));
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0]?.walletAddress, human);
+  assert.equal(result[0]?.balanceRaw, 25n);
 });

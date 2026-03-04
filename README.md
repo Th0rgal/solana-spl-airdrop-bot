@@ -32,6 +32,7 @@ airdrop-bot/
     bot.ts
     holders.ts
     sellers.ts
+    sellerIndex.ts
     distribution.ts
     transfers.ts
     config.ts
@@ -130,8 +131,10 @@ Each round log (`logs/<timestamp>.json`) includes:
 
 ## Config Knobs
 
-- `SELLER_MINT_TX_SCAN_MAX_PAGES` sets max transaction pages scanned for the token mint when detecting recent sellers.
+- `SELLER_MINT_TX_SCAN_MAX_PAGES` sets max transaction pages scanned per sync while advancing the seller index cursor.
+- `SELLER_INDEX_MAX_STALENESS_SECONDS` defines max tolerated age of seller index before rounds are skipped.
 - `STATE_FILE_PATH` overrides persisted scheduler state file (default: `state/bot-state.json`).
+- `SELLER_INDEX_STATE_FILE_PATH` overrides seller index state file (default: `state/seller-index.json`).
 - `DRY_RUN` toggles simulation mode (no on-chain transfers).
 - `RUN_ONCE` executes one distribution round and exits.
 - `DOTENV_PRIVATE_KEY` is required at runtime to decrypt encrypted `.env`.
@@ -139,8 +142,9 @@ Each round log (`logs/<timestamp>.json`) includes:
 ## Operational Notes
 
 - Wallet token funding is manual; this bot only redistributes.
-- Seller detection is done from global mint transaction history, then mapped to holder addresses.
-- Seller checks are paginated through Helius mint history for better coverage in active tokens.
+- Seller detection is incremental: a local seller index is persisted to `state/seller-index.json`.
+- Each round syncs only new mint transactions since the last cursor, reducing API load.
+- If seller-index sync is stale/unavailable beyond threshold, the round is skipped (fail-closed).
 - Transfer rate limiting defaults to ~5 tx/sec.
 
 ## Quick Proof

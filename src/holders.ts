@@ -34,6 +34,14 @@ function decimalToRaw(value: string, decimals: number): bigint {
   return wholePart + fractionPart;
 }
 
+function parseRawDecimal(value: string, decimals: number): bigint | null {
+  try {
+    return decimalToRaw(value, decimals);
+  } catch {
+    return null;
+  }
+}
+
 function parseRawBalance(raw: RawHolder, decimals: number): bigint {
   const candidates: Array<{ value: string | number | undefined; isUiAmount: boolean }> = [
     { value: raw.amount, isUiAmount: false },
@@ -49,13 +57,20 @@ function parseRawBalance(raw: RawHolder, decimals: number): bigint {
     }
 
     if (typeof value === "number" && Number.isFinite(value)) {
+      const decimalParsed = parseRawDecimal(String(value), decimals);
       if (candidate.isUiAmount) {
-        return decimalToRaw(String(value), decimals);
+        if (decimalParsed !== null) {
+          return decimalParsed;
+        }
+        continue;
       }
       if (Number.isInteger(value)) {
         return BigInt(Math.trunc(value));
       }
-      return decimalToRaw(String(value), decimals);
+      if (decimalParsed !== null) {
+        return decimalParsed;
+      }
+      continue;
     }
 
     if (typeof value === "string") {
@@ -65,7 +80,11 @@ function parseRawBalance(raw: RawHolder, decimals: number): bigint {
       }
 
       if (candidate.isUiAmount || normalized.includes(".")) {
-        return decimalToRaw(normalized, decimals);
+        const decimalParsed = parseRawDecimal(normalized, decimals);
+        if (decimalParsed !== null) {
+          return decimalParsed;
+        }
+        continue;
       }
 
       try {

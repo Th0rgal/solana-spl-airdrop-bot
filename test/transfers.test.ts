@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Connection, Keypair } from "@solana/web3.js";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { executeTransfers } from "../src/transfers";
 
 test("executeTransfers in dry run returns synthetic tx hashes and no failures", async () => {
@@ -15,6 +16,7 @@ test("executeTransfers in dry run returns synthetic tx hashes and no failures", 
     connection,
     payer,
     mint,
+    TOKEN_PROGRAM_ID,
     [
       { walletAddress: recipientA, amountRaw: 10n },
       { walletAddress: recipientB, amountRaw: 20n }

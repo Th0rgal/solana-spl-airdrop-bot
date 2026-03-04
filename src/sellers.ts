@@ -1,5 +1,8 @@
 import { PublicKey } from "@solana/web3.js";
+import { config } from "./config";
 import { Holder } from "./types";
+import { SellerIndexState, loadSellerIndexState, pruneSellerIndexState, saveSellerIndexState } from "./sellerIndex";
+import { heliusGet } from "./helius";
 
 interface TokenTransfer {
   mint?: string;
@@ -15,6 +18,13 @@ interface TxRecord {
 }
 
 export type MintTxFetcher = (mint: string, before?: string) => Promise<TxRecord[]>;
+
+export class SellerIndexStaleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SellerIndexStaleError";
+  }
+}
 
 function amountToNumber(value: string | number | undefined): number {
   if (value === undefined) {
@@ -32,39 +42,37 @@ function isTokenOutflow(transfer: TokenTransfer, mint: string): boolean {
   );
 }
 
-async function fetchRecentSellersForMint(
+async function fetchTransactionsSinceCursor(
   mint: string,
-  minTimestamp: number,
+  cursorSignature: string | undefined,
   maxPages: number,
   fetchTransactions: MintTxFetcher
-): Promise<Set<string>> {
-  const sellers = new Set<string>();
+): Promise<{ newTransactions: TxRecord[]; foundCursor: boolean; newestSignature?: string }> {
+  const newTransactions: TxRecord[] = [];
   let before: string | undefined;
+  let foundCursor = false;
+  let newestSignature: string | undefined;
 
   for (let page = 0; page < maxPages; page += 1) {
     const transactions = await fetchTransactions(mint, before);
-
     if (!Array.isArray(transactions) || transactions.length === 0) {
       break;
     }
 
-    let foundTxInWindow = false;
-    for (const tx of transactions) {
-      const txTimestamp = tx.timestamp ?? 0;
-      if (txTimestamp < minTimestamp) {
-        continue;
-      }
-
-      foundTxInWindow = true;
-      const transfers = tx.tokenTransfers ?? [];
-      for (const transfer of transfers) {
-        if (isTokenOutflow(transfer, mint) && transfer.fromUserAccount) {
-          sellers.add(transfer.fromUserAccount);
-        }
-      }
+    if (!newestSignature) {
+      newestSignature = transactions[0]?.signature;
     }
 
-    if (!foundTxInWindow) {
+    for (const tx of transactions) {
+      const signature = tx.signature;
+      if (cursorSignature && signature === cursorSignature) {
+        foundCursor = true;
+        break;
+      }
+      newTransactions.push(tx);
+    }
+
+    if (foundCursor) {
       break;
     }
 
@@ -75,7 +83,80 @@ async function fetchRecentSellersForMint(
     before = lastSignature;
   }
 
-  return sellers;
+  return { newTransactions, foundCursor, newestSignature };
+}
+
+export async function syncSellerIndex(
+  tokenMint: PublicKey,
+  lookbackSeconds: number,
+  maxPages: number,
+  nowUnixSeconds = Math.floor(Date.now() / 1000),
+  fetchTransactions?: MintTxFetcher
+): Promise<SellerIndexState> {
+  const mint = tokenMint.toBase58();
+  const resolvedFetcher: MintTxFetcher =
+    fetchTransactions ??
+    (async (mintAddress, before) => {
+      return heliusGet<TxRecord[]>(`/addresses/${mintAddress}/transactions`, {
+        limit: 100,
+        before
+      });
+    });
+
+  const existingState = await loadSellerIndexState(config.sellerIndexFilePath);
+
+  try {
+    const { newTransactions, foundCursor, newestSignature } = await fetchTransactionsSinceCursor(
+      mint,
+      existingState.cursorSignature,
+      maxPages,
+      resolvedFetcher
+    );
+
+    const nextState: SellerIndexState = {
+      cursorSignature: newestSignature ?? existingState.cursorSignature,
+      lastSyncedAtUnix: nowUnixSeconds,
+      sellerLastSoldAt: { ...existingState.sellerLastSoldAt }
+    };
+
+    for (const tx of newTransactions) {
+      const txTimestamp = tx.timestamp ?? 0;
+      if (txTimestamp <= 0) {
+        continue;
+      }
+
+      for (const transfer of tx.tokenTransfers ?? []) {
+        if (!isTokenOutflow(transfer, mint) || !transfer.fromUserAccount) {
+          continue;
+        }
+        const current = nextState.sellerLastSoldAt[transfer.fromUserAccount] ?? 0;
+        if (txTimestamp > current) {
+          nextState.sellerLastSoldAt[transfer.fromUserAccount] = txTimestamp;
+        }
+      }
+    }
+
+    const retentionSeconds = Math.max(lookbackSeconds * 3, 24 * 60 * 60);
+    const pruned = pruneSellerIndexState(nextState, nowUnixSeconds, retentionSeconds);
+    await saveSellerIndexState(config.sellerIndexFilePath, pruned);
+
+    if (existingState.cursorSignature && !foundCursor && newTransactions.length > 0) {
+      console.warn("Seller index cursor was not found within scan pages; advancing cursor to latest observed page.");
+    }
+
+    return pruned;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    const lastSync = existingState.lastSyncedAtUnix ?? 0;
+    const ageSeconds = lastSync > 0 ? nowUnixSeconds - lastSync : Number.POSITIVE_INFINITY;
+    if (ageSeconds > config.sellerIndexMaxStalenessSeconds) {
+      throw new SellerIndexStaleError(
+        `Seller index is stale (${Math.floor(ageSeconds)}s since last sync): ${message}`
+      );
+    }
+    console.warn(`Seller index sync failed, reusing cached state: ${message}`);
+    return existingState;
+  }
 }
 
 export async function excludeRecentSellers(
@@ -86,36 +167,25 @@ export async function excludeRecentSellers(
   nowUnixSeconds = Math.floor(Date.now() / 1000),
   fetchTransactions?: MintTxFetcher
 ): Promise<{ eligibleHolders: Holder[]; excludedSellersCount: number }> {
-  const minTimestamp = nowUnixSeconds - lookbackSeconds;
-  const mint = tokenMint.toBase58();
-
-  const resolvedFetcher: MintTxFetcher =
-    fetchTransactions ??
-    (async (mintAddress, before) => {
-      const { heliusGet } = await import("./helius");
-      return heliusGet<TxRecord[]>(`/addresses/${mintAddress}/transactions`, {
-        limit: 100,
-        before
-      });
-    });
-
-  let sellerSet = new Set<string>();
-  try {
-    sellerSet = await fetchRecentSellersForMint(mint, minTimestamp, maxPages, resolvedFetcher);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to inspect global seller activity for mint ${mint}: ${message}`);
-  }
+  const state = await syncSellerIndex(
+    tokenMint,
+    lookbackSeconds,
+    maxPages,
+    nowUnixSeconds,
+    fetchTransactions
+  );
+  const cutoff = nowUnixSeconds - lookbackSeconds;
 
   const eligibleHolders: Holder[] = [];
   let excludedSellersCount = 0;
 
   for (const holder of holders) {
-    if (sellerSet.has(holder.walletAddress)) {
+    const soldAt = state.sellerLastSoldAt[holder.walletAddress] ?? 0;
+    if (soldAt >= cutoff) {
       excludedSellersCount += 1;
-    } else {
-      eligibleHolders.push(holder);
+      continue;
     }
+    eligibleHolders.push(holder);
   }
 
   return { eligibleHolders, excludedSellersCount };

@@ -13,6 +13,7 @@ import { runDistributionRound } from "./round";
 import { resolveTokenProgram } from "./tokenProgram";
 import { sleep } from "./utils";
 import { fetchMintTransactionsViaRpc, fetchTokenHoldersViaRpc } from "./rpcData";
+import { heliusGet } from "./helius";
 
 async function readBotTokenBalanceRaw(connection: Connection, tokenProgramId: PublicKey): Promise<bigint> {
   const ata = getAssociatedTokenAddressSync(config.tokenMint, config.botKeypair.publicKey, false, tokenProgramId);
@@ -60,7 +61,18 @@ async function runDistributionRoundLive(
           config.sellerLookbackSeconds,
           config.sellerMintTxScanMaxPages,
           Math.floor(Date.now() / 1000),
-          async (_mint, before) => fetchMintTransactionsViaRpc(connection, config.tokenMint, before)
+          async (mintAddress, before) => {
+            try {
+              return await heliusGet(`/addresses/${mintAddress}/transactions`, {
+                limit: 100,
+                before
+              });
+            } catch (error: unknown) {
+              const message = error instanceof Error ? error.message : String(error);
+              console.warn(`Helius seller fetch failed, falling back to RPC mint tx scan: ${message}`);
+              return fetchMintTransactionsViaRpc(connection, new PublicKey(mintAddress), before);
+            }
+          }
         ),
       calculateDistributionPool,
       calculateAllocations,
@@ -99,6 +111,7 @@ async function main(): Promise<void> {
   console.log(`Token program: ${tokenProgram.programId.toBase58()}`);
   console.log(`Dry run mode: ${config.dryRun}`);
   console.log(`State file: ${config.stateFilePath}`);
+  console.log(`Seller index file: ${config.sellerIndexFilePath}`);
 
   while (true) {
     if (!config.runOnce) {

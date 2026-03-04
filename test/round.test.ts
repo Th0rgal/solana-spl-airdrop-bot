@@ -116,3 +116,21 @@ test("runDistributionRound throws on allocation overflow safety violation", asyn
     /Safety violation: total allocation exceeds 20% distribution pool/
   );
 });
+
+test("runDistributionRound skips when seller index check is unavailable", async () => {
+  const { deps, logs, transferCalls } = buildBaseDeps({
+    excludeRecentSellers: async () => {
+      throw new Error("Seller index is stale");
+    }
+  });
+
+  await runDistributionRound({
+    minDistributionRaw: 1n,
+    minAllocationRaw: 1n,
+    deps
+  });
+
+  assert.equal(transferCalls.length, 0);
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0]?.skipped_reason?.startsWith("seller index unavailable:"), true);
+});

@@ -74,3 +74,17 @@ test("fetchTokenHolders tolerates malformed balance fields and falls back", asyn
   assert.equal(result.length, 1);
   assert.equal(result[0]?.balanceRaw, 150n);
 });
+
+test("fetchTokenHolders ignores scientific-notation numeric balances without crashing", async () => {
+  const mint = Keypair.generate().publicKey;
+  const bot = Keypair.generate().publicKey;
+
+  const result = await fetchTokenHolders(mint, bot, 9, async () => [
+    {
+      owner: wallet(),
+      uiAmount: 1e-7
+    }
+  ]);
+
+  assert.equal(result.length, 0);
+});

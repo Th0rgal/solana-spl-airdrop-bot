@@ -75,7 +75,16 @@ export const config = {
     20,
     "SELLER_MINT_TX_SCAN_MAX_PAGES"
   ),
+  sellerIndexMaxStalenessSeconds: parsePositiveInt(
+    process.env.SELLER_INDEX_MAX_STALENESS_SECONDS,
+    2 * 60 * 60,
+    "SELLER_INDEX_MAX_STALENESS_SECONDS"
+  ),
   stateFilePath: path.resolve(process.cwd(), process.env.STATE_FILE_PATH ?? "state/bot-state.json"),
+  sellerIndexFilePath: path.resolve(
+    process.cwd(),
+    process.env.SELLER_INDEX_STATE_FILE_PATH ?? "state/seller-index.json"
+  ),
   dryRun: parseBoolean(process.env.DRY_RUN, false),
   runOnce: parseBoolean(process.env.RUN_ONCE, false)
 };

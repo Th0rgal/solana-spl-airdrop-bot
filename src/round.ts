@@ -47,7 +47,28 @@ export async function runDistributionRound(params: RunRoundParams): Promise<Roun
   }
 
   const holders = await deps.fetchTokenHolders();
-  const { eligibleHolders, excludedSellersCount } = await deps.excludeRecentSellers(holders);
+
+  let eligibleHolders: Holder[];
+  let excludedSellersCount: number;
+  try {
+    const sellerFilterResult = await deps.excludeRecentSellers(holders);
+    eligibleHolders = sellerFilterResult.eligibleHolders;
+    excludedSellersCount = sellerFilterResult.excludedSellersCount;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    const roundLog: RoundLog = {
+      timestamp,
+      bot_balance: botBalanceRaw.toString(),
+      distribution_pool: distributionPoolRaw.toString(),
+      eligible_holders_count: 0,
+      excluded_sellers_count: 0,
+      tx_hashes: [],
+      skipped_reason: `seller index unavailable: ${message}`
+    };
+    await deps.writeRoundLog(roundLog);
+    return roundLog;
+  }
+
   const allocations = deps.calculateAllocations(eligibleHolders, distributionPoolRaw, minAllocationRaw);
 
   if (allocations.length === 0) {

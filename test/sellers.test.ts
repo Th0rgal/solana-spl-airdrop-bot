@@ -1,53 +1,138 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { Keypair, PublicKey } from '@solana/web3.js';
-import { excludeRecentSellers, TxFetcher } from '../src/sellers';
-import { Holder } from '../src/types';
+import test from "node:test";
+import assert from "node:assert/strict";
+import { promises as fs } from "fs";
+import path from "path";
+import { Keypair, PublicKey } from "@solana/web3.js";
+import { Holder } from "../src/types";
 
 const MINT = Keypair.generate().publicKey;
+const TEST_STATE = path.resolve(process.cwd(), "state/seller-index.test.json");
 
-function txSell(wallet: string, timestamp: number, mint: PublicKey) {
+function txSell(wallet: string, timestamp: number, mint: PublicKey, signature: string) {
   return {
-    signature: `sig-${wallet}-${timestamp}`,
+    signature,
     timestamp,
     tokenTransfers: [
       {
         mint: mint.toBase58(),
         fromUserAccount: wallet,
         toUserAccount: Keypair.generate().publicKey.toBase58(),
-        tokenAmount: '10'
+        tokenAmount: "10"
       }
     ]
   };
 }
 
-test('excludeRecentSellers excludes only wallets with outflow in lookback window', async () => {
-  const seller = Keypair.generate().publicKey.toBase58();
-  const holder = Keypair.generate().publicKey.toBase58();
-  const oldSeller = Keypair.generate().publicKey.toBase58();
+async function cleanup(): Promise<void> {
+  await fs.rm(TEST_STATE, { force: true });
+}
 
-  const holders: Holder[] = [
-    { walletAddress: seller, balanceRaw: 100n },
-    { walletAddress: holder, balanceRaw: 200n },
-    { walletAddress: oldSeller, balanceRaw: 300n }
-  ];
+function setTestEnv(): void {
+  process.env.RPC_URL = "https://example-rpc.invalid";
+  process.env.HELIUS_API_KEY = "test-helius-key";
+  process.env.TOKEN_MINT = MINT.toBase58();
+  process.env.LOOP_INTERVAL_MS = "3600000";
+  process.env.RATE_LIMIT_PER_SECOND = "5";
+  process.env.MAX_TRANSFER_RETRIES = "3";
+  process.env.MIN_DISTRIBUTION_RAW = "1";
+  process.env.MIN_ALLOCATION_RAW = "1";
+  process.env.SELLER_LOOKBACK_SECONDS = "3600";
+  process.env.SELLER_MINT_TX_SCAN_MAX_PAGES = "20";
+  process.env.SELLER_INDEX_MAX_STALENESS_SECONDS = "7200";
+}
 
-  const now = 10_000;
-  const lookback = 3_600;
+test("excludeRecentSellers uses persisted seller index and excludes only recent sellers", async () => {
+  await cleanup();
+  const keypair = Keypair.generate();
+  setTestEnv();
+  process.env.PRIVATE_KEY = JSON.stringify(Array.from(keypair.secretKey));
+  const { config } = await import("../src/config");
+  const { excludeRecentSellers } = await import("../src/sellers");
 
-  const map = new Map<string, Array<{ signature: string; timestamp: number; tokenTransfers: Array<{ mint: string; fromUserAccount: string; toUserAccount: string; tokenAmount: string }> }>>([
-    [seller, [txSell(seller, 9_900, MINT)]],
-    [holder, [{ signature: 'sig-inbound', timestamp: 9_900, tokenTransfers: [{ mint: MINT.toBase58(), fromUserAccount: seller, toUserAccount: holder, tokenAmount: '10' }] }]],
-    [oldSeller, [txSell(oldSeller, 1_000, MINT)]]
-  ]);
+  const mutableConfig = config as { sellerIndexFilePath: string; sellerIndexMaxStalenessSeconds: number };
+  const prevPath = mutableConfig.sellerIndexFilePath;
+  mutableConfig.sellerIndexFilePath = TEST_STATE;
 
-  const fetchTransactions: TxFetcher = async (wallet) => map.get(wallet) ?? [];
+  try {
+    const seller = Keypair.generate().publicKey.toBase58();
+    const holder = Keypair.generate().publicKey.toBase58();
+    const oldSeller = Keypair.generate().publicKey.toBase58();
+    const holders: Holder[] = [
+      { walletAddress: seller, balanceRaw: 100n },
+      { walletAddress: holder, balanceRaw: 200n },
+      { walletAddress: oldSeller, balanceRaw: 300n }
+    ];
 
-  const result = await excludeRecentSellers(holders, MINT, lookback, 2, now, fetchTransactions);
+    let callCount = 0;
+    const fetchTransactions = async (_mint: string, before?: string) => {
+      callCount += 1;
+      if (callCount === 1 && !before) {
+        return [
+          txSell(seller, 9_900, MINT, "sig-new"),
+          txSell(oldSeller, 1_000, MINT, "sig-old")
+        ];
+      }
+      return [];
+    };
 
-  assert.equal(result.excludedSellersCount, 1);
-  assert.deepEqual(
-    result.eligibleHolders.map((entry) => entry.walletAddress).sort(),
-    [holder, oldSeller].sort()
-  );
+    const first = await excludeRecentSellers(holders, MINT, 3_600, 2, 10_000, fetchTransactions);
+    assert.equal(first.excludedSellersCount, 1);
+    assert.deepEqual(
+      first.eligibleHolders.map((entry) => entry.walletAddress).sort(),
+      [holder, oldSeller].sort()
+    );
+    assert.equal(callCount, 2);
+
+    const second = await excludeRecentSellers(holders, MINT, 3_600, 2, 10_100, async () => []);
+    assert.equal(second.excludedSellersCount, 1);
+    assert.deepEqual(
+      second.eligibleHolders.map((entry) => entry.walletAddress).sort(),
+      [holder, oldSeller].sort()
+    );
+  } finally {
+    mutableConfig.sellerIndexFilePath = prevPath;
+    await cleanup();
+  }
+});
+
+test("excludeRecentSellers fails closed when seller index is stale and sync fails", async () => {
+  await cleanup();
+  const keypair = Keypair.generate();
+  setTestEnv();
+  process.env.PRIVATE_KEY = JSON.stringify(Array.from(keypair.secretKey));
+  const { config } = await import("../src/config");
+  const { excludeRecentSellers, SellerIndexStaleError } = await import("../src/sellers");
+
+  const mutableConfig = config as { sellerIndexFilePath: string; sellerIndexMaxStalenessSeconds: number };
+  const prevPath = mutableConfig.sellerIndexFilePath;
+  const prevStaleness = mutableConfig.sellerIndexMaxStalenessSeconds;
+  mutableConfig.sellerIndexFilePath = TEST_STATE;
+  mutableConfig.sellerIndexMaxStalenessSeconds = 60;
+
+  try {
+    await fs.mkdir(path.dirname(TEST_STATE), { recursive: true });
+    await fs.writeFile(
+      TEST_STATE,
+      JSON.stringify({
+        cursorSignature: "cursor",
+        lastSyncedAtUnix: 1000,
+        sellerLastSoldAt: {}
+      }),
+      "utf8"
+    );
+
+    const holders: Holder[] = [{ walletAddress: Keypair.generate().publicKey.toBase58(), balanceRaw: 100n }];
+    await assert.rejects(
+      () => {
+        return excludeRecentSellers(holders, MINT, 3_600, 1, 10_000, async () => {
+          throw new Error("429 Too Many Requests");
+        });
+      },
+      SellerIndexStaleError
+    );
+  } finally {
+    mutableConfig.sellerIndexFilePath = prevPath;
+    mutableConfig.sellerIndexMaxStalenessSeconds = prevStaleness;
+    await cleanup();
+  }
 });

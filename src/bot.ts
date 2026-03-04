@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { Connection } from "@solana/web3.js";
-import { getAssociatedTokenAddressSync, getMint } from "@solana/spl-token";
+import { Connection, PublicKey } from "@solana/web3.js";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { config } from "./config";
 import { fetchTokenHolders } from "./holders";
 import { excludeRecentSellers } from "./sellers";
@@ -10,13 +10,14 @@ import { executeTransfers } from "./transfers";
 import { RoundLog } from "./types";
 import { computeNextDelayMs, loadState, saveState } from "./state";
 import { runDistributionRound } from "./round";
+import { resolveTokenProgram } from "./tokenProgram";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function readBotTokenBalanceRaw(connection: Connection): Promise<bigint> {
-  const ata = getAssociatedTokenAddressSync(config.tokenMint, config.botKeypair.publicKey);
+async function readBotTokenBalanceRaw(connection: Connection, tokenProgramId: PublicKey): Promise<bigint> {
+  const ata = getAssociatedTokenAddressSync(config.tokenMint, config.botKeypair.publicKey, false, tokenProgramId);
   const accountInfo = await connection.getTokenAccountBalance(ata).catch(() => null);
   if (!accountInfo) {
     return 0n;
@@ -33,14 +34,18 @@ async function writeRoundLog(roundLog: RoundLog): Promise<void> {
   await fs.writeFile(logPath, `${JSON.stringify(roundLog, null, 2)}\n`, "utf8");
 }
 
-async function runDistributionRoundLive(connection: Connection, decimals: number): Promise<void> {
+async function runDistributionRoundLive(
+  connection: Connection,
+  decimals: number,
+  tokenProgramId: PublicKey
+): Promise<void> {
   const timestamp = new Date().toISOString();
   const roundLog: RoundLog = await runDistributionRound({
     minDistributionRaw: config.minDistributionRaw,
     minAllocationRaw: config.minAllocationRaw,
     deps: {
       nowIso: () => timestamp,
-      readBotTokenBalanceRaw: async () => readBotTokenBalanceRaw(connection),
+      readBotTokenBalanceRaw: async () => readBotTokenBalanceRaw(connection, tokenProgramId),
       fetchTokenHolders: async () =>
         fetchTokenHolders(config.tokenMint, config.botKeypair.publicKey, decimals),
       excludeRecentSellers: async (holders) =>
@@ -57,6 +62,7 @@ async function runDistributionRoundLive(connection: Connection, decimals: number
           connection,
           config.botKeypair,
           config.tokenMint,
+          tokenProgramId,
           allocations,
           config.rateLimitPerSecond,
           config.maxTransferRetries,
@@ -77,12 +83,13 @@ async function runDistributionRoundLive(connection: Connection, decimals: number
 
 async function main(): Promise<void> {
   const connection = new Connection(config.rpcUrl, "confirmed");
-  const mintInfo = await getMint(connection, config.tokenMint);
-  const decimals = mintInfo.decimals;
+  const tokenProgram = await resolveTokenProgram(connection, config.tokenMint);
+  const decimals = tokenProgram.decimals;
 
   console.log(`Bot wallet: ${config.botKeypair.publicKey.toBase58()}`);
   console.log(`Token mint: ${config.tokenMint.toBase58()}`);
   console.log(`Token decimals: ${decimals}`);
+  console.log(`Token program: ${tokenProgram.programId.toBase58()}`);
   console.log(`Dry run mode: ${config.dryRun}`);
   console.log(`State file: ${config.stateFilePath}`);
 
@@ -107,7 +114,7 @@ async function main(): Promise<void> {
 
     let roundSucceeded = false;
     try {
-      await runDistributionRoundLive(connection, decimals);
+      await runDistributionRoundLive(connection, decimals, tokenProgram.programId);
       roundSucceeded = true;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.stack ?? error.message : String(error);

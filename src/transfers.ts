@@ -18,6 +18,7 @@ async function transferWithRetry(
   connection: Connection,
   payer: Keypair,
   mint: PublicKey,
+  tokenProgramId: PublicKey,
   sourceTokenAccount: PublicKey,
   destinationOwner: PublicKey,
   amountRaw: bigint,
@@ -29,7 +30,11 @@ async function transferWithRetry(
         connection,
         payer,
         mint,
-        destinationOwner
+        destinationOwner,
+        false,
+        "confirmed",
+        undefined,
+        tokenProgramId
       );
 
       const signature = await transfer(
@@ -38,7 +43,10 @@ async function transferWithRetry(
         sourceTokenAccount,
         destinationTokenAccount.address,
         payer.publicKey,
-        amountRaw
+        amountRaw,
+        [],
+        undefined,
+        tokenProgramId
       );
 
       return signature;
@@ -58,6 +66,7 @@ export async function executeTransfers(
   connection: Connection,
   payer: Keypair,
   mint: PublicKey,
+  tokenProgramId: PublicKey,
   allocations: Allocation[],
   rateLimitPerSecond: number,
   maxRetries: number,
@@ -66,7 +75,7 @@ export async function executeTransfers(
   const txHashes: string[] = [];
   const failedTransfers: Array<{ wallet: string; amount: string; error: string }> = [];
 
-  const sourceTokenAccount = getAssociatedTokenAddressSync(mint, payer.publicKey);
+  const sourceTokenAccount = getAssociatedTokenAddressSync(mint, payer.publicKey, false, tokenProgramId);
   const spacingMs = Math.max(Math.floor(1000 / Math.max(1, rateLimitPerSecond)), 1);
 
   for (const allocation of allocations) {
@@ -84,6 +93,7 @@ export async function executeTransfers(
         connection,
         payer,
         mint,
+        tokenProgramId,
         sourceTokenAccount,
         recipient,
         allocation.amountRaw,

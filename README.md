@@ -23,7 +23,8 @@ Every round (default: hourly), the bot:
 - Off-curve/program-owned addresses are excluded from holder eligibility and transfer execution.
 - Round failures are caught so the bot continues next cycle.
 - Last attempted and successful round timestamps are persisted to disk, so restart does not trigger duplicate hourly rounds after partial/failed rounds.
-- `.env` is stored encrypted with `dotenvx`; `.env.keys` is ignored by git.
+- `.env` is local-only and gitignored; commit only `.env.example`.
+- If you use `dotenvx`, keep `.env.keys` private and out of git.
 
 ## Project Structure
 
@@ -140,7 +141,7 @@ Each round log (`logs/<timestamp>.json`) includes:
 - `SKIP_PREFLIGHT` disables preflight simulation for providers that reject simulation requests.
 - `DRY_RUN` toggles simulation mode (no on-chain transfers).
 - `RUN_ONCE` executes one distribution round and exits.
-- `DOTENV_PRIVATE_KEY` is required at runtime to decrypt encrypted `.env`.
+- `DOTENV_PRIVATE_KEY` is required only if you run with a dotenvx-encrypted `.env`.
 
 ## Operational Notes
 

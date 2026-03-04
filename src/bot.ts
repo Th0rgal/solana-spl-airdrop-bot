@@ -17,11 +17,12 @@ import { heliusGet } from "./helius";
 
 async function readBotTokenBalanceRaw(connection: Connection, tokenProgramId: PublicKey): Promise<bigint> {
   const ata = getAssociatedTokenAddressSync(config.tokenMint, config.botKeypair.publicKey, false, tokenProgramId);
-  const accountInfo = await connection.getTokenAccountBalance(ata).catch(() => null);
-  if (!accountInfo) {
+  const ataInfo = await connection.getAccountInfo(ata, "confirmed");
+  if (!ataInfo) {
     return 0n;
   }
 
+  const accountInfo = await connection.getTokenAccountBalance(ata, "confirmed");
   return BigInt(accountInfo.value.amount);
 }
 

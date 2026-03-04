@@ -89,6 +89,24 @@ test("fetchTokenHolders ignores scientific-notation numeric balances without cra
   assert.equal(result.length, 0);
 });
 
+test("fetchTokenHolders treats non-integer raw amounts as raw units without decimal scaling", async () => {
+  const mint = Keypair.generate().publicKey;
+  const bot = Keypair.generate().publicKey;
+  const a = wallet();
+  const b = wallet();
+
+  const result = await fetchTokenHolders(mint, bot, 6, async () => ({
+    token_accounts: [
+      { owner: a, amount: "5.5" },
+      { owner: b, amount: 7.9 }
+    ]
+  }));
+
+  assert.equal(result.length, 2);
+  assert.equal(result.find((entry) => entry.walletAddress === a)?.balanceRaw, 5n);
+  assert.equal(result.find((entry) => entry.walletAddress === b)?.balanceRaw, 7n);
+});
+
 test("fetchTokenHolders excludes off-curve program-owned addresses", async () => {
   const mint = Keypair.generate().publicKey;
   const bot = Keypair.generate().publicKey;

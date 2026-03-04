@@ -19,6 +19,11 @@ interface TxRecord {
 
 export type MintTxFetcher = (mint: string, before?: string) => Promise<TxRecord[]>;
 
+interface SellerIndexSyncOptions {
+  stateFilePath: string;
+  maxStalenessSeconds: number;
+}
+
 export class SellerIndexStaleError extends Error {
   constructor(message: string) {
     super(message);
@@ -91,9 +96,14 @@ export async function syncSellerIndex(
   lookbackSeconds: number,
   maxPages: number,
   nowUnixSeconds = Math.floor(Date.now() / 1000),
-  fetchTransactions?: MintTxFetcher
+  fetchTransactions?: MintTxFetcher,
+  options?: SellerIndexSyncOptions
 ): Promise<SellerIndexState> {
   const mint = tokenMint.toBase58();
+  const settings: SellerIndexSyncOptions = {
+    stateFilePath: options?.stateFilePath ?? config.sellerIndexFilePath,
+    maxStalenessSeconds: options?.maxStalenessSeconds ?? config.sellerIndexMaxStalenessSeconds
+  };
   const resolvedFetcher: MintTxFetcher =
     fetchTransactions ??
     (async (mintAddress, before) => {
@@ -103,7 +113,7 @@ export async function syncSellerIndex(
       });
     });
 
-  const existingState = await loadSellerIndexState(config.sellerIndexFilePath);
+  const existingState = await loadSellerIndexState(settings.stateFilePath);
 
   try {
     const { newTransactions, foundCursor, newestSignature } = await fetchTransactionsSinceCursor(
@@ -138,7 +148,7 @@ export async function syncSellerIndex(
 
     const retentionSeconds = Math.max(lookbackSeconds * 3, 24 * 60 * 60);
     const pruned = pruneSellerIndexState(nextState, nowUnixSeconds, retentionSeconds);
-    await saveSellerIndexState(config.sellerIndexFilePath, pruned);
+    await saveSellerIndexState(settings.stateFilePath, pruned);
 
     if (existingState.cursorSignature && !foundCursor && newTransactions.length > 0) {
       console.warn("Seller index cursor was not found within scan pages; advancing cursor to latest observed page.");
@@ -149,7 +159,7 @@ export async function syncSellerIndex(
     const message = error instanceof Error ? error.message : String(error);
     const lastSync = existingState.lastSyncedAtUnix ?? 0;
     const ageSeconds = lastSync > 0 ? nowUnixSeconds - lastSync : Number.POSITIVE_INFINITY;
-    if (ageSeconds > config.sellerIndexMaxStalenessSeconds) {
+    if (ageSeconds > settings.maxStalenessSeconds) {
       throw new SellerIndexStaleError(
         `Seller index is stale (${Math.floor(ageSeconds)}s since last sync): ${message}`
       );
@@ -165,14 +175,16 @@ export async function excludeRecentSellers(
   lookbackSeconds: number,
   maxPages: number,
   nowUnixSeconds = Math.floor(Date.now() / 1000),
-  fetchTransactions?: MintTxFetcher
+  fetchTransactions?: MintTxFetcher,
+  options?: SellerIndexSyncOptions
 ): Promise<{ eligibleHolders: Holder[]; excludedSellersCount: number }> {
   const state = await syncSellerIndex(
     tokenMint,
     lookbackSeconds,
     maxPages,
     nowUnixSeconds,
-    fetchTransactions
+    fetchTransactions,
+    options
   );
   const cutoff = nowUnixSeconds - lookbackSeconds;
 

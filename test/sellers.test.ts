@@ -46,12 +46,7 @@ test("excludeRecentSellers uses persisted seller index and excludes only recent 
   const keypair = Keypair.generate();
   setTestEnv();
   process.env.PRIVATE_KEY = JSON.stringify(Array.from(keypair.secretKey));
-  const { config } = await import("../src/config");
   const { excludeRecentSellers } = await import("../src/sellers");
-
-  const mutableConfig = config as { sellerIndexFilePath: string; sellerIndexMaxStalenessSeconds: number };
-  const prevPath = mutableConfig.sellerIndexFilePath;
-  mutableConfig.sellerIndexFilePath = TEST_STATE;
 
   try {
     const seller = Keypair.generate().publicKey.toBase58();
@@ -75,7 +70,10 @@ test("excludeRecentSellers uses persisted seller index and excludes only recent 
       return [];
     };
 
-    const first = await excludeRecentSellers(holders, MINT, 3_600, 2, 10_000, fetchTransactions);
+    const first = await excludeRecentSellers(holders, MINT, 3_600, 2, 10_000, fetchTransactions, {
+      stateFilePath: TEST_STATE,
+      maxStalenessSeconds: 7_200
+    });
     assert.equal(first.excludedSellersCount, 1);
     assert.deepEqual(
       first.eligibleHolders.map((entry) => entry.walletAddress).sort(),
@@ -83,14 +81,16 @@ test("excludeRecentSellers uses persisted seller index and excludes only recent 
     );
     assert.equal(callCount, 2);
 
-    const second = await excludeRecentSellers(holders, MINT, 3_600, 2, 10_100, async () => []);
+    const second = await excludeRecentSellers(holders, MINT, 3_600, 2, 10_100, async () => [], {
+      stateFilePath: TEST_STATE,
+      maxStalenessSeconds: 7_200
+    });
     assert.equal(second.excludedSellersCount, 1);
     assert.deepEqual(
       second.eligibleHolders.map((entry) => entry.walletAddress).sort(),
       [holder, oldSeller].sort()
     );
   } finally {
-    mutableConfig.sellerIndexFilePath = prevPath;
     await cleanup();
   }
 });
@@ -100,14 +100,7 @@ test("excludeRecentSellers fails closed when seller index is stale and sync fail
   const keypair = Keypair.generate();
   setTestEnv();
   process.env.PRIVATE_KEY = JSON.stringify(Array.from(keypair.secretKey));
-  const { config } = await import("../src/config");
   const { excludeRecentSellers, SellerIndexStaleError } = await import("../src/sellers");
-
-  const mutableConfig = config as { sellerIndexFilePath: string; sellerIndexMaxStalenessSeconds: number };
-  const prevPath = mutableConfig.sellerIndexFilePath;
-  const prevStaleness = mutableConfig.sellerIndexMaxStalenessSeconds;
-  mutableConfig.sellerIndexFilePath = TEST_STATE;
-  mutableConfig.sellerIndexMaxStalenessSeconds = 60;
 
   try {
     await fs.mkdir(path.dirname(TEST_STATE), { recursive: true });
@@ -126,13 +119,14 @@ test("excludeRecentSellers fails closed when seller index is stale and sync fail
       () => {
         return excludeRecentSellers(holders, MINT, 3_600, 1, 10_000, async () => {
           throw new Error("429 Too Many Requests");
+        }, {
+          stateFilePath: TEST_STATE,
+          maxStalenessSeconds: 60
         });
       },
       SellerIndexStaleError
     );
   } finally {
-    mutableConfig.sellerIndexFilePath = prevPath;
-    mutableConfig.sellerIndexMaxStalenessSeconds = prevStaleness;
     await cleanup();
   }
 });

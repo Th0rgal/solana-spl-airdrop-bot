@@ -43,6 +43,25 @@ function parseRawDecimal(value: string, decimals: number): bigint | null {
   }
 }
 
+function parseRawIntegerLike(value: string): bigint | null {
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    return null;
+  }
+  if (/^[+-]?\d+$/.test(normalized)) {
+    try {
+      return BigInt(normalized);
+    } catch {
+      return null;
+    }
+  }
+  const asNumber = Number(normalized);
+  if (!Number.isFinite(asNumber)) {
+    return null;
+  }
+  return BigInt(Math.trunc(asNumber));
+}
+
 function parseRawBalance(raw: RawHolder, decimals: number): bigint {
   const candidates: Array<{ value: string | number | undefined; isUiAmount: boolean }> = [
     { value: raw.amount, isUiAmount: false },
@@ -68,10 +87,7 @@ function parseRawBalance(raw: RawHolder, decimals: number): bigint {
       if (Number.isInteger(value)) {
         return BigInt(Math.trunc(value));
       }
-      if (decimalParsed !== null) {
-        return decimalParsed;
-      }
-      continue;
+      return BigInt(Math.trunc(value));
     }
 
     if (typeof value === "string") {
@@ -80,7 +96,7 @@ function parseRawBalance(raw: RawHolder, decimals: number): bigint {
         continue;
       }
 
-      if (candidate.isUiAmount || normalized.includes(".")) {
+      if (candidate.isUiAmount) {
         const decimalParsed = parseRawDecimal(normalized, decimals);
         if (decimalParsed !== null) {
           return decimalParsed;
@@ -88,11 +104,11 @@ function parseRawBalance(raw: RawHolder, decimals: number): bigint {
         continue;
       }
 
-      try {
-        return BigInt(normalized);
-      } catch {
-        continue;
+      const integerLike = parseRawIntegerLike(normalized);
+      if (integerLike !== null) {
+        return integerLike;
       }
+      continue;
     }
   }
 

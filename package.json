@@ -5,10 +5,12 @@
   "main": "dist/bot.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "ts-node src/bot.ts",
-    "start": "node dist/bot.js",
+    "dev": "dotenvx run -- ts-node src/bot.ts",
+    "start": "dotenvx run -- node dist/bot.js",
     "test": "node --test -r ts-node/register test/*.test.ts",
-    "check": "npm run test && npm run build"
+    "check": "npm run test && npm run build",
+    "env:encrypt": "dotenvx encrypt -f .env",
+    "env:decrypt": "dotenvx decrypt -f .env"
   },
   "repository": {
     "type": "git",
@@ -34,6 +36,7 @@
     "dotenv": "^17.3.1"
   },
   "devDependencies": {
+    "@dotenvx/dotenvx": "^1.52.0",
     "@types/node": "^25.3.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

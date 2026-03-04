@@ -70,7 +70,8 @@ export const config = {
   minAllocationRaw: BigInt(process.env.MIN_ALLOCATION_RAW ?? "1"),
   sellerLookbackSeconds: parsePositiveInt(process.env.SELLER_LOOKBACK_SECONDS, 3600, "SELLER_LOOKBACK_SECONDS"),
   sellerTxScanMaxPages: parsePositiveInt(process.env.SELLER_TX_SCAN_MAX_PAGES, 20, "SELLER_TX_SCAN_MAX_PAGES"),
-  dryRun: parseBoolean(process.env.DRY_RUN, false)
+  dryRun: parseBoolean(process.env.DRY_RUN, false),
+  runOnce: parseBoolean(process.env.RUN_ONCE, false)
 };
 
 export type BotConfig = typeof config;

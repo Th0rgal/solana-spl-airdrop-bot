@@ -93,6 +93,7 @@ npm start
 ```
 
 For the first validation round, keep `DRY_RUN=true`. After logs look correct, set `DRY_RUN=false`.
+For a single proof run, also set `RUN_ONCE=true`.
 
 ## Log Format
 
@@ -113,6 +114,7 @@ Each round log (`logs/<timestamp>.json`) includes:
 
 - `SELLER_TX_SCAN_MAX_PAGES` sets max transaction pages scanned per wallet during seller detection.
 - `DRY_RUN` toggles simulation mode (no on-chain transfers).
+- `RUN_ONCE` executes one distribution round and exits.
 
 ## Operational Notes
 
@@ -120,3 +122,17 @@ Each round log (`logs/<timestamp>.json`) includes:
 - Seller detection uses recent Helius transactions and checks token outflows in the configured lookback window.
 - Seller checks are paginated through Helius history for better coverage in active wallets.
 - Transfer rate limiting defaults to ~5 tx/sec.
+
+## Quick Proof
+
+Run a single simulated round and exit:
+
+```bash
+RUN_ONCE=true DRY_RUN=true npm run dev
+```
+
+Run local verification:
+
+```bash
+npm run check
+```

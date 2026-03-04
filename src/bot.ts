@@ -132,6 +132,11 @@ async function main(): Promise<void> {
       console.error(`Distribution round failed: ${message}`);
     }
 
+    if (config.runOnce) {
+      console.log("RUN_ONCE=true, exiting after one round");
+      break;
+    }
+
     console.log(`Sleeping for ${config.loopIntervalMs} ms`);
     await sleep(config.loopIntervalMs);
   }

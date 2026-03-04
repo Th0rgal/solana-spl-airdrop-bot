@@ -6,7 +6,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "ts-node src/bot.ts",
-    "start": "node dist/bot.js"
+    "start": "node dist/bot.js",
+    "test": "node --test -r ts-node/register test/*.test.ts",
+    "check": "npm run test && npm run build"
   },
   "repository": {
     "type": "git",

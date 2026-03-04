@@ -1,5 +1,4 @@
 import { PublicKey } from "@solana/web3.js";
-import { heliusGet } from "./helius";
 import { Holder } from "./types";
 
 interface TokenTransfer {
@@ -14,6 +13,8 @@ interface TxRecord {
   timestamp?: number;
   tokenTransfers?: TokenTransfer[];
 }
+
+export type TxFetcher = (wallet: string, before?: string) => Promise<TxRecord[]>;
 
 function amountToNumber(value: string | number | undefined): number {
   if (value === undefined) {
@@ -42,15 +43,13 @@ async function hasSoldInWindow(
   wallet: string,
   tokenMint: string,
   minTimestamp: number,
-  maxPages: number
+  maxPages: number,
+  fetchTransactions: TxFetcher
 ): Promise<boolean> {
   let before: string | undefined;
 
   for (let page = 0; page < maxPages; page += 1) {
-    const transactions = await heliusGet<TxRecord[]>(`/addresses/${wallet}/transactions`, {
-      limit: 100,
-      before
-    });
+    const transactions = await fetchTransactions(wallet, before);
 
     if (!Array.isArray(transactions) || transactions.length === 0) {
       return false;
@@ -109,14 +108,21 @@ export async function excludeRecentSellers(
   tokenMint: PublicKey,
   lookbackSeconds: number,
   maxPages: number,
-  nowUnixSeconds = Math.floor(Date.now() / 1000)
+  nowUnixSeconds = Math.floor(Date.now() / 1000),
+  fetchTransactions?: TxFetcher
 ): Promise<{ eligibleHolders: Holder[]; excludedSellersCount: number }> {
   const minTimestamp = nowUnixSeconds - lookbackSeconds;
   const mint = tokenMint.toBase58();
+  const resolvedFetcher: TxFetcher =
+    fetchTransactions ??
+    (async (wallet, before) => {
+      const { heliusGet } = await import("./helius");
+      return heliusGet<TxRecord[]>(`/addresses/${wallet}/transactions`, { limit: 100, before });
+    });
 
   const soldFlags = await runConcurrently(holders, 8, async (holder) => {
     try {
-      return await hasSoldInWindow(holder.walletAddress, mint, minTimestamp, maxPages);
+      return await hasSoldInWindow(holder.walletAddress, mint, minTimestamp, maxPages, resolvedFetcher);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Failed to inspect seller activity for ${holder.walletAddress}: ${message}`);

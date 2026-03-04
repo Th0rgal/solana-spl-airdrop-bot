@@ -1,5 +1,6 @@
 import { Connection, ParsedAccountData, PublicKey } from "@solana/web3.js";
 import { Holder } from "./types";
+import { sleep } from "./utils";
 
 interface TokenTransferLike {
   mint?: string;
@@ -120,19 +121,45 @@ export async function fetchMintTransactionsViaRpc(
   tokenMint: PublicKey,
   before?: string
 ): Promise<MintTxLike[]> {
-  const signatures = await connection.getSignaturesForAddress(
-    tokenMint,
-    { before, limit: 100 },
-    "confirmed"
+  const callWithRetry = async <T>(fn: () => Promise<T>, label: string): Promise<T> => {
+    const maxRetries = 5;
+    for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+      try {
+        return await fn();
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        const shouldRetry = message.includes("429") || message.toLowerCase().includes("too many requests");
+        const isLast = attempt === maxRetries;
+        if (!shouldRetry || isLast) {
+          throw new Error(`${label} failed: ${message}`);
+        }
+        await sleep(500 * 2 ** (attempt - 1));
+      }
+    }
+    throw new Error(`${label} failed: retry state exhausted`);
+  };
+
+  const signatures = await callWithRetry(
+    () =>
+      connection.getSignaturesForAddress(
+        tokenMint,
+        { before, limit: 100 },
+        "confirmed"
+      ),
+    "getSignaturesForAddress"
   );
 
   if (signatures.length === 0) {
     return [];
   }
 
-  const parsedTxs = await connection.getParsedTransactions(
-    signatures.map((entry) => entry.signature),
-    { commitment: "confirmed", maxSupportedTransactionVersion: 0 }
+  const parsedTxs = await callWithRetry(
+    () =>
+      connection.getParsedTransactions(
+        signatures.map((entry) => entry.signature),
+        { commitment: "confirmed", maxSupportedTransactionVersion: 0 }
+      ),
+    "getParsedTransactions"
   );
 
   const mint = tokenMint.toBase58();

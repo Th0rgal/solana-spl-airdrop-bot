@@ -1,14 +1,11 @@
 import axios from "axios";
 import { config } from "./config";
+import { sleep } from "./utils";
 
 const helius = axios.create({
   baseURL: "https://api.helius.xyz/v0",
   timeout: 30_000
 });
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export async function heliusGet<T>(path: string, params: Record<string, unknown>): Promise<T> {
   const query = { ...params, "api-key": config.heliusApiKey };

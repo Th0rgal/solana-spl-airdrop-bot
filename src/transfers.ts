@@ -9,10 +9,7 @@ import {
   transfer
 } from "@solana/spl-token";
 import { Allocation } from "./types";
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { sleep } from "./utils";
 
 async function transferWithRetry(
   connection: Connection,

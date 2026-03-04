@@ -35,27 +35,36 @@ function decimalToRaw(value: string, decimals: number): bigint {
 }
 
 function parseRawBalance(raw: RawHolder, decimals: number): bigint {
-  const candidates = [raw.amount, raw.balance, raw.token_balance, raw.uiAmount];
+  const candidates: Array<{ value: string | number | undefined; isUiAmount: boolean }> = [
+    { value: raw.amount, isUiAmount: false },
+    { value: raw.balance, isUiAmount: false },
+    { value: raw.token_balance, isUiAmount: false },
+    { value: raw.uiAmount, isUiAmount: true }
+  ];
 
   for (const candidate of candidates) {
-    if (candidate === undefined || candidate === null) {
+    const value = candidate.value;
+    if (value === undefined || value === null) {
       continue;
     }
 
-    if (typeof candidate === "number" && Number.isFinite(candidate)) {
-      if (Number.isInteger(candidate)) {
-        return BigInt(Math.trunc(candidate));
+    if (typeof value === "number" && Number.isFinite(value)) {
+      if (candidate.isUiAmount) {
+        return decimalToRaw(String(value), decimals);
       }
-      return decimalToRaw(String(candidate), decimals);
+      if (Number.isInteger(value)) {
+        return BigInt(Math.trunc(value));
+      }
+      return decimalToRaw(String(value), decimals);
     }
 
-    if (typeof candidate === "string") {
-      const normalized = candidate.trim();
+    if (typeof value === "string") {
+      const normalized = value.trim();
       if (normalized.length === 0) {
         continue;
       }
 
-      if (normalized.includes(".")) {
+      if (candidate.isUiAmount || normalized.includes(".")) {
         return decimalToRaw(normalized, decimals);
       }
 

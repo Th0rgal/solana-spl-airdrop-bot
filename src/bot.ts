@@ -11,10 +11,7 @@ import { RoundLog } from "./types";
 import { computeNextDelayMs, loadState, saveState } from "./state";
 import { runDistributionRound } from "./round";
 import { resolveTokenProgram } from "./tokenProgram";
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { sleep } from "./utils";
 
 async function readBotTokenBalanceRaw(connection: Connection, tokenProgramId: PublicKey): Promise<bigint> {
   const ata = getAssociatedTokenAddressSync(config.tokenMint, config.botKeypair.publicKey, false, tokenProgramId);
@@ -109,7 +106,11 @@ async function main(): Promise<void> {
     }
 
     if (!config.runOnce) {
-      await saveState(config.stateFilePath, { lastRoundAttemptedAtMs: Date.now() });
+      const state = await loadState(config.stateFilePath);
+      await saveState(config.stateFilePath, {
+        ...state,
+        lastRoundAttemptedAtMs: Date.now()
+      });
     }
 
     let roundSucceeded = false;

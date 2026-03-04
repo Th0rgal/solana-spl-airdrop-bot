@@ -27,12 +27,5 @@ export function calculateAllocations(
     .filter((allocation) => allocation.amountRaw >= minAllocationRaw)
     .map((allocation) => ({ ...allocation }));
 
-  const used = filtered.reduce((sum, allocation) => sum + allocation.amountRaw, 0n);
-  const remainder = distributionPoolRaw - used;
-
-  if (remainder > 0n && filtered.length > 0) {
-    filtered[0].amountRaw += remainder;
-  }
-
   return filtered;
 }

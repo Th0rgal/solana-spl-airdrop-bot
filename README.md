@@ -130,7 +130,7 @@ Each round log (`logs/<timestamp>.json`) includes:
 
 ## Config Knobs
 
-- `SELLER_TX_SCAN_MAX_PAGES` sets max transaction pages scanned per wallet during seller detection.
+- `SELLER_MINT_TX_SCAN_MAX_PAGES` sets max transaction pages scanned for the token mint when detecting recent sellers.
 - `STATE_FILE_PATH` overrides persisted scheduler state file (default: `state/bot-state.json`).
 - `DRY_RUN` toggles simulation mode (no on-chain transfers).
 - `RUN_ONCE` executes one distribution round and exits.
@@ -139,8 +139,8 @@ Each round log (`logs/<timestamp>.json`) includes:
 ## Operational Notes
 
 - Wallet token funding is manual; this bot only redistributes.
-- Seller detection uses recent Helius transactions and checks token outflows in the configured lookback window.
-- Seller checks are paginated through Helius history for better coverage in active wallets.
+- Seller detection is done from global mint transaction history, then mapped to holder addresses.
+- Seller checks are paginated through Helius mint history for better coverage in active tokens.
 - Transfer rate limiting defaults to ~5 tx/sec.
 
 ## Quick Proof

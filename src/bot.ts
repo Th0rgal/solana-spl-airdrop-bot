@@ -48,7 +48,7 @@ async function runDistributionRoundLive(connection: Connection, decimals: number
           holders,
           config.tokenMint,
           config.sellerLookbackSeconds,
-          config.sellerTxScanMaxPages
+          config.sellerMintTxScanMaxPages
         ),
       calculateDistributionPool,
       calculateAllocations,

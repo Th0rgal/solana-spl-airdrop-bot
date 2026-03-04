@@ -70,7 +70,11 @@ export const config = {
   minDistributionRaw: BigInt(process.env.MIN_DISTRIBUTION_RAW ?? "1"),
   minAllocationRaw: BigInt(process.env.MIN_ALLOCATION_RAW ?? "1"),
   sellerLookbackSeconds: parsePositiveInt(process.env.SELLER_LOOKBACK_SECONDS, 3600, "SELLER_LOOKBACK_SECONDS"),
-  sellerTxScanMaxPages: parsePositiveInt(process.env.SELLER_TX_SCAN_MAX_PAGES, 20, "SELLER_TX_SCAN_MAX_PAGES"),
+  sellerMintTxScanMaxPages: parsePositiveInt(
+    process.env.SELLER_MINT_TX_SCAN_MAX_PAGES ?? process.env.SELLER_TX_SCAN_MAX_PAGES,
+    20,
+    "SELLER_MINT_TX_SCAN_MAX_PAGES"
+  ),
   stateFilePath: path.resolve(process.cwd(), process.env.STATE_FILE_PATH ?? "state/bot-state.json"),
   dryRun: parseBoolean(process.env.DRY_RUN, false),
   runOnce: parseBoolean(process.env.RUN_ONCE, false)

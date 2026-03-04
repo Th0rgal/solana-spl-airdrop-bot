@@ -14,7 +14,7 @@ interface TxRecord {
   tokenTransfers?: TokenTransfer[];
 }
 
-export type TxFetcher = (wallet: string, before?: string) => Promise<TxRecord[]>;
+export type MintTxFetcher = (mint: string, before?: string) => Promise<TxRecord[]>;
 
 function amountToNumber(value: string | number | undefined): number {
   if (value === undefined) {
@@ -23,36 +23,29 @@ function amountToNumber(value: string | number | undefined): number {
   return typeof value === "number" ? value : Number(value);
 }
 
-function transferIsSell(transfer: TokenTransfer, wallet: string, tokenMint: string): boolean {
-  if (!transfer.mint || transfer.mint !== tokenMint) {
-    return false;
-  }
-
-  if (transfer.fromUserAccount !== wallet) {
-    return false;
-  }
-
-  if (transfer.toUserAccount === wallet) {
-    return false;
-  }
-
-  return amountToNumber(transfer.tokenAmount) > 0;
+function isTokenOutflow(transfer: TokenTransfer, mint: string): boolean {
+  return (
+    transfer.mint === mint &&
+    !!transfer.fromUserAccount &&
+    transfer.fromUserAccount !== transfer.toUserAccount &&
+    amountToNumber(transfer.tokenAmount) > 0
+  );
 }
 
-async function hasSoldInWindow(
-  wallet: string,
-  tokenMint: string,
+async function fetchRecentSellersForMint(
+  mint: string,
   minTimestamp: number,
   maxPages: number,
-  fetchTransactions: TxFetcher
-): Promise<boolean> {
+  fetchTransactions: MintTxFetcher
+): Promise<Set<string>> {
+  const sellers = new Set<string>();
   let before: string | undefined;
 
   for (let page = 0; page < maxPages; page += 1) {
-    const transactions = await fetchTransactions(wallet, before);
+    const transactions = await fetchTransactions(mint, before);
 
     if (!Array.isArray(transactions) || transactions.length === 0) {
-      return false;
+      break;
     }
 
     let foundTxInWindow = false;
@@ -64,43 +57,25 @@ async function hasSoldInWindow(
 
       foundTxInWindow = true;
       const transfers = tx.tokenTransfers ?? [];
-      if (transfers.some((transfer) => transferIsSell(transfer, wallet, tokenMint))) {
-        return true;
+      for (const transfer of transfers) {
+        if (isTokenOutflow(transfer, mint) && transfer.fromUserAccount) {
+          sellers.add(transfer.fromUserAccount);
+        }
       }
     }
 
     if (!foundTxInWindow) {
-      return false;
+      break;
     }
 
     const lastSignature = transactions[transactions.length - 1]?.signature;
     if (!lastSignature) {
-      return false;
+      break;
     }
     before = lastSignature;
   }
 
-  return false;
-}
-
-async function runConcurrently<T, R>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let index = 0;
-
-  async function runner(): Promise<void> {
-    while (index < items.length) {
-      const current = index;
-      index += 1;
-      results[current] = await worker(items[current]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runner()));
-  return results;
+  return sellers;
 }
 
 export async function excludeRecentSellers(
@@ -109,37 +84,39 @@ export async function excludeRecentSellers(
   lookbackSeconds: number,
   maxPages: number,
   nowUnixSeconds = Math.floor(Date.now() / 1000),
-  fetchTransactions?: TxFetcher
+  fetchTransactions?: MintTxFetcher
 ): Promise<{ eligibleHolders: Holder[]; excludedSellersCount: number }> {
   const minTimestamp = nowUnixSeconds - lookbackSeconds;
   const mint = tokenMint.toBase58();
-  const resolvedFetcher: TxFetcher =
+
+  const resolvedFetcher: MintTxFetcher =
     fetchTransactions ??
-    (async (wallet, before) => {
+    (async (mintAddress, before) => {
       const { heliusGet } = await import("./helius");
-      return heliusGet<TxRecord[]>(`/addresses/${wallet}/transactions`, { limit: 100, before });
+      return heliusGet<TxRecord[]>(`/addresses/${mintAddress}/transactions`, {
+        limit: 100,
+        before
+      });
     });
 
-  const soldFlags = await runConcurrently(holders, 8, async (holder) => {
-    try {
-      return await hasSoldInWindow(holder.walletAddress, mint, minTimestamp, maxPages, resolvedFetcher);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to inspect seller activity for ${holder.walletAddress}: ${message}`);
-      return false;
-    }
-  });
+  let sellerSet = new Set<string>();
+  try {
+    sellerSet = await fetchRecentSellersForMint(mint, minTimestamp, maxPages, resolvedFetcher);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to inspect global seller activity for mint ${mint}: ${message}`);
+  }
 
   const eligibleHolders: Holder[] = [];
   let excludedSellersCount = 0;
 
-  holders.forEach((holder, i) => {
-    if (soldFlags[i]) {
+  for (const holder of holders) {
+    if (sellerSet.has(holder.walletAddress)) {
       excludedSellersCount += 1;
     } else {
       eligibleHolders.push(holder);
     }
-  });
+  }
 
   return { eligibleHolders, excludedSellersCount };
 }

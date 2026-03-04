@@ -21,6 +21,7 @@ Every round (default: hourly), the bot:
 - Very small rounds are skipped (`MIN_DISTRIBUTION_RAW`).
 - Dust transfers are skipped (`MIN_ALLOCATION_RAW`).
 - Round failures are caught so the bot continues next cycle.
+- Last successful round time is persisted to disk, so restart does not trigger duplicate hourly rounds.
 - `.env` is ignored by git.
 
 ## Project Structure
@@ -37,6 +38,7 @@ airdrop-bot/
     helius.ts
     types.ts
   logs/
+  state/
   .env
   .env.example
   package.json
@@ -113,6 +115,7 @@ Each round log (`logs/<timestamp>.json`) includes:
 ## Config Knobs
 
 - `SELLER_TX_SCAN_MAX_PAGES` sets max transaction pages scanned per wallet during seller detection.
+- `STATE_FILE_PATH` overrides persisted scheduler state file (default: `state/bot-state.json`).
 - `DRY_RUN` toggles simulation mode (no on-chain transfers).
 - `RUN_ONCE` executes one distribution round and exits.
 

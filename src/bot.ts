@@ -8,6 +8,7 @@ import { excludeRecentSellers } from "./sellers";
 import { calculateAllocations, calculateDistributionPool } from "./distribution";
 import { executeTransfers } from "./transfers";
 import { RoundLog } from "./types";
+import { computeNextDelayMs, loadState, saveState } from "./state";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -123,13 +124,29 @@ async function main(): Promise<void> {
   console.log(`Token mint: ${config.tokenMint.toBase58()}`);
   console.log(`Token decimals: ${decimals}`);
   console.log(`Dry run mode: ${config.dryRun}`);
+  console.log(`State file: ${config.stateFilePath}`);
 
   while (true) {
+    if (!config.runOnce) {
+      const state = await loadState(config.stateFilePath);
+      const delayMs = computeNextDelayMs(state.lastRoundCompletedAtMs, config.loopIntervalMs, Date.now());
+      if (delayMs > 0) {
+        console.log(`Sleeping for ${delayMs} ms before next eligible round`);
+        await sleep(delayMs);
+      }
+    }
+
+    let roundSucceeded = false;
     try {
       await runDistributionRound(connection, decimals);
+      roundSucceeded = true;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.stack ?? error.message : String(error);
       console.error(`Distribution round failed: ${message}`);
+    }
+
+    if (roundSucceeded) {
+      await saveState(config.stateFilePath, { lastRoundCompletedAtMs: Date.now() });
     }
 
     if (config.runOnce) {
@@ -137,8 +154,7 @@ async function main(): Promise<void> {
       break;
     }
 
-    console.log(`Sleeping for ${config.loopIntervalMs} ms`);
-    await sleep(config.loopIntervalMs);
+    await sleep(250);
   }
 }
 

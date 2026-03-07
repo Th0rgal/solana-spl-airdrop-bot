@@ -1,7 +1,9 @@
 node_modules/
 dist/
 .env
+.env.keys
 logs/
+state/
 *.log
 .DS_Store
 coverage/

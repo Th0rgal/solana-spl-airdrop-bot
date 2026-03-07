@@ -1,0 +1,44 @@
+{
+  "name": "solana-spl-airdrop-bot",
+  "version": "0.1.0",
+  "description": "Automates hourly redistribution of an SPL token balance from a bot wallet to eligible token holders.",
+  "main": "dist/bot.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "dotenvx run -- ts-node src/bot.ts",
+    "start": "dotenvx run -- node dist/bot.js",
+    "test": "node --test -r ts-node/register test/*.test.ts",
+    "check": "npm run test && npm run build",
+    "env:encrypt": "dotenvx encrypt -f .env",
+    "env:decrypt": "dotenvx decrypt -f .env"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Th0rgal/solana-spl-airdrop-bot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Th0rgal/solana-spl-airdrop-bot/issues"
+  },
+  "homepage": "https://github.com/Th0rgal/solana-spl-airdrop-bot#readme",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "dependencies": {
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "axios": "^1.13.6",
+    "bs58": "^6.0.0",
+    "dotenv": "^17.3.1"
+  },
+  "devDependencies": {
+    "@dotenvx/dotenvx": "^1.52.0",
+    "@types/node": "^25.3.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
